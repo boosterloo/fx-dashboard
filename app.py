@@ -1,54 +1,39 @@
-import os
-import pandas as pd
-import psycopg2
 import streamlit as st
+import pandas as pd
+from supabase import create_client
+import os
 from dotenv import load_dotenv
-import altair as alt
+import plotly.express as px
 
-# Load environment variables
+# === 1. Omgevingsvariabelen laden ===
 load_dotenv()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Database connection
-conn = psycopg2.connect(
-    host=os.getenv("PGHOST"),
-    port=os.getenv("PGPORT"),
-    dbname=os.getenv("PGDATABASE"),
-    user=os.getenv("PGUSER"),
-    password=os.getenv("PGPASSWORD")
-)
+# === 2. Titel ===
+st.title("💱 FX Dashboard")
 
-st.set_page_config(page_title="💱 FX Dashboard", page_icon="💱", layout="centered")
-st.title("💱 FX Rates Dashboard")
-st.markdown("""
-    Bekijk de meest recente wisselkoersen.
-    Dit dashboard toont een overzicht van de EUR/USD koersen uit de database.
-""")
+# === 3. Data ophalen uit Supabase ===
+@st.cache_data
+def load_data():
+    response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
+    df = pd.DataFrame(response.data)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
 
-try:
-    df = pd.read_sql("SELECT * FROM fx_rates ORDER BY date DESC LIMIT 30", conn)
-    df = df.sort_values("date")  # voor grafiek in chronologische volgorde
+df = load_data()
 
-    # Toon data tabel
-    st.subheader("📅 Data Tabel")
-    st.dataframe(df, use_container_width=True)
+# === 4. Valutaparen beschikbaar in kolommen ===
+currency_columns = [col for col in df.columns if col not in ["id", "date"]]
 
-    # Grafiek
-    st.subheader("📊 EUR/USD Over Tijd")
-    chart = alt.Chart(df).mark_line(point=True).encode(
-        x=alt.X("date:T", title="Datum"),
-        y=alt.Y("eur_usd:Q", title="EUR/USD Koers"),
-        tooltip=["date:T", "eur_usd:Q"]
-    ).properties(width=700, height=400)
-    st.altair_chart(chart, use_container_width=True)
+# === 5. Gebruikerselectie ===
+selected_pair = st.selectbox("Valutapaar kiezen", currency_columns, index=currency_columns.index("eur_usd") if "eur_usd" in currency_columns else 0)
 
-except Exception as e:
-    st.error(f"❌ Fout bij ophalen van data: {e}")
+# === 6. Lijngrafiek tekenen ===
+fig = px.line(df, x="date", y=selected_pair, title=f"{selected_pair.upper()} Koersontwikkeling")
+st.plotly_chart(fig, use_container_width=True)
 
-finally:
-    conn.close()
-
-st.markdown("""
----
-👨‍💻 Gemaakt met Streamlit | Data uit Supabase PostgreSQL
-""")
-# python -m streamlit run app.py
+# === 7. Laatste koers tonen ===
+latest_value = df[selected_pair].iloc[-1]
+st.metric(label=f"Laatste koers ({selected_pair.upper()})", value=f"{latest_value:.4f}")
