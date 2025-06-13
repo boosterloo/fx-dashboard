@@ -1,5 +1,3 @@
-st.title("🧪 Testversie FX Dashboard")
-
 
 import streamlit as st
 import pandas as pd
