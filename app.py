@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from supabase import create_client
@@ -13,7 +12,8 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # === 2. Titel ===
-st.title("💱 FX Dashboard met EMA")
+st.set_page_config(page_title="FX Dashboard", layout="wide")
+st.title("FX Dashboard met EMA")
 
 # === 3. Data ophalen ===
 @st.cache_data
