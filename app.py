@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client
 import os
 from dotenv import load_dotenv
-import plotly.express as px
+import plotly.graph_objects as go
 
 # === 1. Omgevingsvariabelen laden ===
 load_dotenv()
@@ -55,6 +55,11 @@ def load_data():
             st.write("Ruwe response data (eerste 5 rijen):", all_data[:5])
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
+        # Omgerekende kolommen toevoegen
+        for col in df.columns:
+            if col not in ["id", "date"]:
+                new_col = f"{col.split('_')[1]}/{col.split('_')[0]}"  # Bijv. eur_usd -> USD/EUR, dan omgekeerd naar EUR/USD
+                df[new_col] = 1 / df[col]  # Inverse berekening
         st.write("Geladen datums:", df["date"].min().date(), "tot", df["date"].max().date())
         return df
     except Exception as e:
@@ -80,7 +85,7 @@ min_date, max_date = df["date"].min().date(), df["date"].max().date()
 st.write("📆 Beschikbare datums:", min_date, "→", max_date)
 
 # === 4. Valutaparen bepalen ===
-currency_columns = [col for col in df.columns if col not in ["id", "date"]]
+currency_columns = [col for col in df.columns if "/" in col]  # Gebruik de nieuwe omgerekende kolommen
 if not currency_columns:
     st.error("Geen valutaparen gevonden in de data.")
     st.stop()
@@ -110,24 +115,48 @@ df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
 st.sidebar.header("EMA-instellingen")
 ema_periods = st.sidebar.multiselect("📐 Kies EMA-periodes", [20, 50, 100], default=[20])
 
-# === 7. Overlay grafiek ===
-default_pairs = [p for p in ["eur_usd", "usd_jpy"] if p in currency_columns]
-selected_pairs = st.selectbox("Selecteer valutaparen voor overlay", [default_pairs] if default_pairs else currency_columns, index=0 if default_pairs else 0)
+# === 7. Overlay grafiek met dual-axis ===
+default_pairs = [p for p in ["EUR/USD", "USD/JPY"] if p in currency_columns]
+selected_pairs = st.multiselect("Selecteer valutaparen voor overlay", currency_columns, default=default_pairs)
 if selected_pairs:
-    fig = px.line(df_filtered, x="date", y=selected_pairs if isinstance(selected_pairs, list) else [selected_pairs])
+    fig = go.Figure()
+    for i, pair in enumerate(selected_pairs):
+        # Voeg de eerste valuta toe aan de linker Y-as
+        if i == 0:
+            fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered[pair], name=pair, yaxis="y1"))
+        # Voeg de tweede valuta toe aan de rechter Y-as
+        else:
+            fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered[pair], name=pair, yaxis="y2"))
+    
+    # Configureer de dual-axis
+    fig.update_layout(
+        title="Overlay van geselecteerde valutaparen",
+        yaxis=dict(title=selected_pairs[0] if selected_pairs else "", side="left"),
+        yaxis2=dict(title=selected_pairs[1] if len(selected_pairs) > 1 else "", overlaying="y", side="right"),
+        xaxis=dict(title="Datum"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # === 8. Aparte grafieken per paar met EMA ===
 st.subheader("📊 Koersontwikkeling per valutapaar met EMA")
 for pair in currency_columns:
-    st.markdown(f"#### {pair.upper()}")
+    st.markdown(f"#### {pair}")
     df_pair = df_filtered[["date", pair]].copy()
     for periode in ema_periods:
         df_pair[f"EMA{periode}"] = df_pair[pair].ewm(span=periode, adjust=False).mean()
-    fig = px.line(df_pair, x="date", y=[pair] + [f"EMA{p}" for p in ema_periods],
-                  labels={"value": "Koers", "variable": "Lijn"}, title=pair.upper())
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_pair["date"], y=df_pair[pair], name=pair, line=dict(color="blue")))
+    for periode in ema_periods:
+        fig.add_trace(go.Scatter(x=df_pair["date"], y=df_pair[f"EMA{periode}"], name=f"EMA{periode}", line=dict(color="red", dash="dash")))
+    fig.update_layout(
+        title=pair,
+        yaxis=dict(title="Koers"),
+        xaxis=dict(title="Datum"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
     st.plotly_chart(fig, use_container_width=True)
-    st.markdown(f'<div class="metric">Laatste koers ({pair.upper()})<br>{df_pair[pair].iloc[-1]:.4f}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric">Laatste koers ({pair})<br>{df_pair[pair].iloc[-1]:.4f}</div>', unsafe_allow_html=True)
 
 # === 9. Downloadoptie ===
 st.download_button("⬇️ Download als CSV", data=df_filtered.to_csv(index=False), file_name="fx_data.csv")
