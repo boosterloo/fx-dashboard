@@ -17,12 +17,20 @@ st.title(":currency_exchange: FX Dashboard met EMA")
 # === 3. Data ophalen ===
 def load_data():
     try:
-        # Haal alle data op zonder limiet, forceer volledige dataset
-        response = supabase.table("fx_rates").select("*").order("date", desc=False).limit(10000).execute()
-        df = pd.DataFrame(response.data)
-        st.write("Aantal rijen geladen:", len(df))  # Debug: aantal rijen
-        st.write("Ruwe response data (eerste 5 rijen):", response.data[:5])  # Debug: eerste 5 rijen
-        st.write("Volledige response lengte:", len(response.data))  # Debug: totale lengte
+        all_data = []
+        offset = 0
+        limit = 1000  # Haal 1000 rijen per keer op
+        while True:
+            response = supabase.table("fx_rates").select("*").order("date", desc=False).range(offset, offset + limit - 1).execute()
+            data = response.data
+            if not data:  # Stop als er geen data meer is
+                break
+            all_data.extend(data)
+            offset += limit
+            st.write(f"Gehaalde rijen: {offset}, laatste datum: {data[-1]['date']}")  # Debug
+        df = pd.DataFrame(all_data)
+        st.write("Aantal rijen geladen:", len(df))  # Debug: totaal aantal rijen
+        st.write("Ruwe response data (eerste 5 rijen):", all_data[:5])  # Debug: eerste 5 rijen
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
         st.write("Geladen datums:", df["date"].min().date(), "tot", df["date"].max().date())  # Debug-regel
