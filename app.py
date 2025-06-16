@@ -91,8 +91,9 @@ def get_default_range():
 start_default, end_default = get_default_range()
 st.sidebar.write("Beschikbaar:", min_date, "→", max_date)
 start_date = st.sidebar.date_input("Startdatum", value=start_default, min_value=min_date, max_value=max_date)
-end_date = st.sidebar.date_input("Einddatum", value=end_default, min_value=min_date, max_value=max_date)  # Fout gecorrigeerd
+end_date = st.sidebar.date_input("Einddatum", value=end_default, min_value=min_date, max_value=max_date)
 
+# Zorg ervoor dat de datums correct als pd.Timestamp worden geconverteerd
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
@@ -100,7 +101,8 @@ if start_date > end_date:
     st.sidebar.error("❌ Startdatum moet vóór einddatum liggen.")
     st.stop()
 
-df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+# Filter de data met expliciete datatype-conversie
+df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
 
 # === 6. EMA instellingen ===
 st.sidebar.header("EMA-instellingen")
