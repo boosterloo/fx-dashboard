@@ -30,7 +30,9 @@ currency_columns = [col for col in df.columns if col not in ["id", "date"]]
 
 # === 5. Datumfilter ===
 default_start = df["date"].max() - pd.DateOffset(months=3)
-selected_range = st.date_input("📅 Selecteer een periode", value=(default_start, df["date"].max()))
+start_default = default_start.date()
+end_default = df["date"].max().date()
+selected_range = st.date_input("📅 Selecteer een periode", value=(start_default, end_default))
 start_date, end_date = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
