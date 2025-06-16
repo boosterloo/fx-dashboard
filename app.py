@@ -91,7 +91,7 @@ def get_default_range():
 start_default, end_default = get_default_range()
 st.sidebar.write("Beschikbaar:", min_date, "→", max_date)
 start_date = st.sidebar.date_input("Startdatum", value=start_default, min_value=min_date, max_value=max_date)
-end_date = st.sidebar.date_input("Einddatum", value=end_default, min_value=min_value, max_value=max_date)
+end_date = st.sidebar.date_input("Einddatum", value=end_default, min_value=min_date, max_value=max_date)  # Fout gecorrigeerd
 
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
