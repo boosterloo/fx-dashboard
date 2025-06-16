@@ -17,11 +17,16 @@ st.title("💱 FX Dashboard met EMA")
 # === 3. Data ophalen ===
 @st.cache_data(ttl=300)
 def load_data():
-    response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
-    df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df = df.dropna(subset=["date"])
-    return df
+    try:
+        response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
+        df = pd.DataFrame(response.data)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date"])
+        return df
+    except Exception as e:
+        st.error("❌ Data ophalen mislukt.")
+        st.exception(e)
+        return pd.DataFrame()
 
 df = load_data()
 
@@ -29,10 +34,13 @@ df = load_data()
 if st.button("🔄 Herlaad data van Supabase"):
     try:
         st.cache_data.clear()
-        st.rerun()
+        st.experimental_rerun()
     except Exception as e:
-        st.error("❌ Herladen mislukt. Details zijn gelogd.")
-        st.write(f"**Foutmelding:** `{e}`")
+        st.error("❌ Herladen mislukt.")
+        st.exception(e)
+
+if df.empty:
+    st.stop()
 
 min_date, max_date = df["date"].min().date(), df["date"].max().date()
 st.write("📆 Beschikbare datums:", min_date, "→", max_date)
