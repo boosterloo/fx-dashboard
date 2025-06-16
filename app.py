@@ -12,7 +12,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # === 2. Titel ===
-st.title("💱 FX Dashboard met EMA")
+st.title("\U0001F4B1 FX Dashboard met EMA")
 
 # === 3. Data ophalen ===
 @st.cache_data(ttl=300)
@@ -34,7 +34,7 @@ df = load_data()
 if st.button("🔄 Herlaad data van Supabase"):
     try:
         st.cache_data.clear()
-        st.experimental_rerun()
+        st.rerun()
     except Exception as e:
         st.error("❌ Herladen mislukt.")
         st.exception(e)
