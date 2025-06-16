@@ -15,7 +15,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 st.title("💱 FX Dashboard met EMA")
 
 # === 3. Data ophalen ===
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_data():
     response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
     df = pd.DataFrame(response.data)
