@@ -19,7 +19,7 @@ st.title("💱 FX Dashboard met EMA")
 def load_data():
     response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
     df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_localize(None)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"])
     return df
 
@@ -32,7 +32,7 @@ currency_columns = [col for col in df.columns if col not in ["id", "date"]]
 default_start = df["date"].max() - pd.DateOffset(months=3)
 start_default = default_start.date()
 end_default = df["date"].max().date()
-selected_range = st.date_input("📅 Selecteer een periode", value=(start_default, end_default))
+selected_range = st.date_input("📅 Selecteer een periode", value=(start_default, end_default), min_value=df["date"].min().date(), max_value=end_default)
 start_date, end_date = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
