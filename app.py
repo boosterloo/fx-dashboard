@@ -56,10 +56,16 @@ def load_data():
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
         # Hernoem kolommen naar conventionele notatie zonder omrekening
-        for col in df.columns:
-            if col not in ["id", "date"]:
-                new_col = f"{col.split('_')[1]}/{col.split('_')[0]}"  # Bijv. eur_usd -> EUR/USD
-                df[new_col] = df[col]  # Kopieer waarde zonder omrekening
+        column_mapping = {
+            "eur_usd": "EUR/USD",
+            "usd_jpy": "USD/JPY",
+            "gbp_usd": "GBP/USD",
+            "aud_usd": "AUD/USD",
+            "usd_chf": "USD/CHF"
+        }
+        for old_col, new_col in column_mapping.items():
+            if old_col in df.columns:
+                df[new_col] = df[old_col]  # Kopieer waarde zonder omrekening
         st.write("Geladen datums:", df["date"].min().date(), "tot", df["date"].max().date())
         return df
     except Exception as e:
@@ -116,8 +122,8 @@ st.sidebar.header("EMA-instellingen")
 ema_periods = st.sidebar.multiselect("📐 Kies EMA-periodes", [20, 50, 100], default=[20])
 
 # === 7. Overlay grafiek met dual-axis ===
-default_pairs = [p for p in ["EUR/USD", "USD/JPY"] if p in currency_columns]
-selected_pairs = st.multiselect("Selecteer valutaparen voor overlay", currency_columns, default=default_pairs)
+default_pairs = [p for p in ["EUR/USD", "USD/JPY", "GBP/USD", "AUD/USD", "USD/CHF"] if p in currency_columns]
+selected_pairs = st.multiselect("Selecteer valutaparen voor overlay", currency_columns, default=default_pairs[:2])  # Max 2 voor dual-axis
 if selected_pairs:
     fig = go.Figure()
     for i, pair in enumerate(selected_pairs):
@@ -125,7 +131,7 @@ if selected_pairs:
         if i == 0:
             fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered[pair], name=pair, yaxis="y1"))
         # Voeg de tweede valuta toe aan de rechter Y-as
-        else:
+        elif i == 1:
             fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered[pair], name=pair, yaxis="y2"))
     
     # Configureer de dual-axis
