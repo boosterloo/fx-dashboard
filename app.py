@@ -55,11 +55,11 @@ def load_data():
             st.write("Ruwe response data (eerste 5 rijen):", all_data[:5])
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
-        # Omgerekende kolommen toevoegen
+        # Hernoem kolommen naar conventionele notatie zonder omrekening
         for col in df.columns:
             if col not in ["id", "date"]:
-                new_col = f"{col.split('_')[1]}/{col.split('_')[0]}"  # Bijv. eur_usd -> USD/EUR, dan omgekeerd naar EUR/USD
-                df[new_col] = 1 / df[col]  # Inverse berekening
+                new_col = f"{col.split('_')[1]}/{col.split('_')[0]}"  # Bijv. eur_usd -> EUR/USD
+                df[new_col] = df[col]  # Kopieer waarde zonder omrekening
         st.write("Geladen datums:", df["date"].min().date(), "tot", df["date"].max().date())
         return df
     except Exception as e:
@@ -85,7 +85,7 @@ min_date, max_date = df["date"].min().date(), df["date"].max().date()
 st.write("📆 Beschikbare datums:", min_date, "→", max_date)
 
 # === 4. Valutaparen bepalen ===
-currency_columns = [col for col in df.columns if "/" in col]  # Gebruik de nieuwe omgerekende kolommen
+currency_columns = [col for col in df.columns if "/" in col]  # Gebruik de nieuwe omgenaamde kolommen
 if not currency_columns:
     st.error("Geen valutaparen gevonden in de data.")
     st.stop()
@@ -93,9 +93,9 @@ if not currency_columns:
 # === 5. Datumfilter ===
 st.sidebar.header("Datumfilter")
 def get_default_range():
-    default_end = max_date
-    default_start = default_end - pd.DateOffset(months=3)
-    return default_start.date(), default_end
+    default_end = max_date  # Standaard de meest recente datum
+    default_start = default_end - pd.DateOffset(months=3)  # 3 maanden ervoor
+    return default_start, default_end
 
 start_default, end_default = get_default_range()
 st.sidebar.write("Beschikbaar:", min_date, "→", max_date)
