@@ -19,7 +19,7 @@ st.title("💱 FX Dashboard met EMA")
 def load_data():
     response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
     df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True).dt.tz_localize(None)
     df = df.dropna(subset=["date"])
     return df
 
@@ -40,7 +40,8 @@ ema_periods = st.sidebar.multiselect("📐 Kies EMA-periodes", [20, 50, 100], de
 
 # === 7. Overlay grafiek ===
 with st.expander("📈 Overlay van valutaparen"):
-    selected_pairs = st.multiselect("Valutaparen", currency_columns, default=["eur_usd", "jpy_usd"])
+    default_pairs = [p for p in ["eur_usd", "jpy_usd"] if p in currency_columns]
+    selected_pairs = st.multiselect("Valutaparen", currency_columns, default=default_pairs)
     if selected_pairs:
         fig = px.line(df_filtered, x="date", y=selected_pairs)
         st.plotly_chart(fig, use_container_width=True)
