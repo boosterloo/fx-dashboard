@@ -15,7 +15,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 st.title("💱 FX Dashboard met EMA")
 
 # === 3. Data ophalen ===
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def load_data():
     response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
     df = pd.DataFrame(response.data)
@@ -24,6 +24,12 @@ def load_data():
     return df
 
 df = load_data()
+
+# === Herlaadknop voor handmatige refresh ===
+if st.button("🔄 Herlaad data van Supabase"):
+    st.cache_data.clear()
+    st.experimental_rerun()
+
 min_date, max_date = df["date"].min().date(), df["date"].max().date()
 st.write("📆 Beschikbare datums:", min_date, "→", max_date)
 
