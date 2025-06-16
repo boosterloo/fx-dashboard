@@ -24,15 +24,20 @@ def load_data():
     return df
 
 df = load_data()
+st.write("📆 Beschikbare datums:", df["date"].min().date(), "→", df["date"].max().date())
 
 # === 4. Valutaparen bepalen ===
 currency_columns = [col for col in df.columns if col not in ["id", "date"]]
 
 # === 5. Datumfilter ===
-default_start = df["date"].max() - pd.DateOffset(months=3)
-start_default = default_start.date()
-end_default = df["date"].max().date()
-selected_range = st.date_input("📅 Selecteer een periode", value=(start_default, end_default), min_value=df["date"].min().date(), max_value=end_default)
+def get_default_range():
+    default_end = df["date"].max()
+    default_start = default_end - pd.DateOffset(months=3)
+    return default_start.date(), default_end.date()
+
+start_default, end_default = get_default_range()
+selected_range = st.date_input("📅 Selecteer een periode", value=(start_default, end_default), 
+                                min_value=df["date"].min().date(), max_value=end_default)
 start_date, end_date = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
