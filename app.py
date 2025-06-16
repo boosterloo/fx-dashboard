@@ -12,7 +12,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # === 2. Titel ===
-st.title("\U0001F4B1 FX Dashboard met EMA")
+st.title(":currency_exchange: FX Dashboard met EMA")
 
 # === 3. Data ophalen ===
 @st.cache_data(ttl=300)
@@ -34,11 +34,7 @@ df = load_data()
 if st.button("🔄 Herlaad data van Supabase"):
     try:
         st.cache_data.clear()
-        st.experimental_rerun = getattr(st, "experimental_rerun", None)
-        if callable(st.experimental_rerun):
-            st.experimental_rerun()
-        else:
-            st.warning("⚠️ Automatische herstart wordt niet ondersteund in deze Streamlit-versie.")
+        st.rerun()
     except Exception as e:
         st.error("❌ Herladen mislukt.")
         st.exception(e)
@@ -61,16 +57,17 @@ def get_default_range():
 
 start_default, end_default = get_default_range()
 st.sidebar.write("Beschikbaar:", min_date, "→", max_date)
-selected_range = st.sidebar.date_input("📅 Selecteer een periode:",
-                                       value=(start_default, end_default),
-                                       min_value=min_date,
-                                       max_value=max_date)
+start_date = st.sidebar.date_input("Startdatum", value=start_default, min_value=min_date, max_value=max_date)
+end_date = st.sidebar.date_input("Einddatum", value=end_default, min_value=min_date, max_value=max_date)
 
-if isinstance(selected_range, tuple):
-    start_date, end_date = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
-else:
-    start_date, end_date = min_date, max_date
+start_date = pd.to_datetime(start_date)
+end_date = pd.to_datetime(end_date)
 
+if start_date > end_date:
+    st.sidebar.error("❌ Startdatum moet vóór einddatum liggen.")
+    st.stop()
+
+# Filter de data
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
 # === 6. EMA instellingen ===
