@@ -19,8 +19,8 @@ st.title("💱 FX Dashboard met EMA")
 def load_data():
     response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
     df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], errors='coerce')
-    df = df.dropna(subset=["date"])  # verwijder rijen waar de datum niet goed is
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
     return df
 
 df = load_data()
@@ -36,23 +36,25 @@ df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
 # === 6. EMA instellingen ===
 st.sidebar.header("EMA-instellingen")
-ema_periods = st.sidebar.multiselect("📐 Kies periodes", [20, 50, 100], default=[20])
+ema_periods = st.sidebar.multiselect("📐 Kies EMA-periodes", [20, 50, 100], default=[20])
 
-# === 7. Overlay-grafiek ===
+# === 7. Overlay grafiek ===
 with st.expander("📈 Overlay van valutaparen"):
-    selected_pairs = st.multiselect("Valutaparen", currency_columns, default=currency_columns[:2])
+    selected_pairs = st.multiselect("Valutaparen", currency_columns, default=["eur_usd", "jpy_usd"])
     if selected_pairs:
         fig = px.line(df_filtered, x="date", y=selected_pairs)
         st.plotly_chart(fig, use_container_width=True)
 
-# === 8. Aparte grafieken per paar ===
+# === 8. Aparte grafieken per paar met EMA ===
 st.subheader("📊 Koersontwikkeling per valutapaar met EMA")
 
 for pair in currency_columns:
     st.markdown(f"#### {pair.upper()}")
+
     df_pair = df_filtered[["date", pair]].copy()
-    for p in ema_periods:
-        df_pair[f"EMA{p}"] = df_pair[pair].ewm(span=p, adjust=False).mean()
+    for periode in ema_periods:
+        df_pair[f"EMA{periode}"] = df_pair[pair].ewm(span=periode, adjust=False).mean()
+
     fig = px.line(df_pair, x="date", y=[pair] + [f"EMA{p}" for p in ema_periods],
                   labels={"value": "Koers", "variable": "Lijn"}, title=pair.upper())
     st.plotly_chart(fig, use_container_width=True)
@@ -60,5 +62,5 @@ for pair in currency_columns:
     laatste_koers = df_pair[pair].iloc[-1]
     st.metric(label=f"Laatste koers ({pair.upper()})", value=f"{laatste_koers:.4f}")
 
-# === 9. Downloadknop ===
+# === 9. Downloadoptie ===
 st.download_button("⬇️ Download als CSV", data=df_filtered.to_csv(index=False), file_name="fx_data.csv")
