@@ -17,15 +17,18 @@ st.title(":currency_exchange: FX Dashboard met EMA")
 # === 3. Data ophalen ===
 def load_data():
     try:
-        response = supabase.table("fx_rates").select("*").order("date", desc=False).range(0, 10000).execute()
+        # Probeer alle data op te halen zonder limiet
+        response = supabase.table("fx_rates").select("*").order("date", desc=False).execute()
         df = pd.DataFrame(response.data)
+        st.write("Aantal rijen geladen:", len(df))  # Debug: aantal rijen
+        st.write("Ruwe response data:", response.data[:5])  # Debug: eerste 5 rijen
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"])
         st.write("Geladen datums:", df["date"].min().date(), "tot", df["date"].max().date())  # Debug-regel
         return df
     except Exception as e:
         st.error("❌ Data ophalen mislukt.")
-        st.exception(e)
+        st.exception(e)  # Toon de volledige fout
         return pd.DataFrame()
 
 df = load_data()
