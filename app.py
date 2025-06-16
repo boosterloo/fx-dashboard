@@ -56,11 +56,11 @@ def load_data():
         df = df.dropna(subset=['date'])
         # Kolomnamen hernoemen en omkeren waar nodig
         mapping = {
-            'eur_usd': ('EUR/USD', True),   # 1 USD→EUR => omgekeerd voor EUR/USD
-            'jpy_usd': ('USD/JPY', False),  # 1 USD→JPY is correct voor USD/JPY
-            'gbp_usd': ('GBP/USD', True),   # 1 USD→GBP => omgekeerd voor GBP/USD
-            'aud_usd': ('AUD/USD', True),   # 1 USD→AUD => omgekeerd voor AUD/USD
-            'chf_usd': ('USD/CHF', False)   # 1 USD→CHF is correct voor USD/CHF
+            'eur_usd': ('EUR/USD', True),    # 1 USD→EUR => omgekeerd voor EUR/USD
+            'usd_jpy': ('USD/JPY', False),   # 1 USD→JPY is direct USD/JPY
+            'gbp_usd': ('GBP/USD', True),    # 1 USD→GBP => omgekeerd voor GBP/USD
+            'aud_usd': ('AUD/USD', True),    # 1 USD→AUD => omgekeerd voor AUD/USD
+            'usd_chf': ('USD/CHF', False)    # 1 USD→CHF is direct USD/CHF
         }
         for old_col, (new_col, invert) in mapping.items():
             if old_col in df.columns:
@@ -73,7 +73,6 @@ def load_data():
         return pd.DataFrame()
 
 # Laad data
-title = st.spinner("Data ophalen uit Supabase...")
 df = load_data()
 
 # Herlaadknop
@@ -123,8 +122,7 @@ sel_pairs = st.multiselect("Selecteer valutaparen", currency_columns, default=de
 if sel_pairs:
     fig = go.Figure()
     for i, pair in enumerate(sel_pairs):
-        trace = go.Scatter(x=df_filtered['date'], y=df_filtered[pair], name=pair, yaxis='y2' if i==1 else 'y1')
-        fig.add_trace(trace)
+        fig.add_trace(go.Scatter(x=df_filtered['date'], y=df_filtered[pair], name=pair, yaxis='y2' if i==1 else 'y1'))
     fig.update_layout(
         xaxis=dict(title='Datum'),
         yaxis=dict(title=sel_pairs[0] if sel_pairs else '', side='left', anchor='x'),
