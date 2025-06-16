@@ -40,14 +40,15 @@ def load_data():
         all_data = []
         offset = 0
         limit = 1000
-        while True:
-            response = supabase.table("fx_rates").select("*").order("date", desc=False).range(offset, offset + limit - 1).execute()
-            data = response.data
-            if not data:
-                break
-            all_data.extend(data)
-            offset += limit
-            st.write(f"Gehaalde rijen: {offset}, laatste datum: {data[-1]['date']}")
+        with st.expander("📊 Data ophalen log"):
+            while True:
+                response = supabase.table("fx_rates").select("*").order("date", desc=False).range(offset, offset + limit - 1).execute()
+                data = response.data
+                if not data:
+                    break
+                all_data.extend(data)
+                offset += limit
+                st.write(f"Gehaalde rijen: {offset}, laatste datum: {data[-1]['date']}")
         df = pd.DataFrame(all_data)
         with st.expander("📊 Debug-informatie"):
             st.write("Aantal rijen geladen:", len(df))
@@ -80,6 +81,9 @@ st.write("📆 Beschikbare datums:", min_date, "→", max_date)
 
 # === 4. Valutaparen bepalen ===
 currency_columns = [col for col in df.columns if col not in ["id", "date"]]
+if not currency_columns:
+    st.error("Geen valutaparen gevonden in de data.")
+    st.stop()
 
 # === 5. Datumfilter ===
 st.sidebar.header("Datumfilter")
@@ -93,7 +97,6 @@ st.sidebar.write("Beschikbaar:", min_date, "→", max_date)
 start_date = st.sidebar.date_input("Startdatum", value=start_default, min_value=min_date, max_value=max_date)
 end_date = st.sidebar.date_input("Einddatum", value=end_default, min_value=min_date, max_value=max_date)
 
-# Zorg ervoor dat de datums correct als pd.Timestamp worden geconverteerd
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
@@ -101,7 +104,6 @@ if start_date > end_date:
     st.sidebar.error("❌ Startdatum moet vóór einddatum liggen.")
     st.stop()
 
-# Filter de data met expliciete datatype-conversie
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
 
 # === 6. EMA instellingen ===
@@ -109,9 +111,10 @@ st.sidebar.header("EMA-instellingen")
 ema_periods = st.sidebar.multiselect("📐 Kies EMA-periodes", [20, 50, 100], default=[20])
 
 # === 7. Overlay grafiek ===
-selected_pairs = st.selectbox("Selecteer valutaparen voor overlay", currency_columns, default=["eur_usd", "usd_jpy"])
+default_pairs = [p for p in ["eur_usd", "usd_jpy"] if p in currency_columns]
+selected_pairs = st.selectbox("Selecteer valutaparen voor overlay", [default_pairs] if default_pairs else currency_columns, index=0 if default_pairs else 0)
 if selected_pairs:
-    fig = px.line(df_filtered, x="date", y=selected_pairs)
+    fig = px.line(df_filtered, x="date", y=selected_pairs if isinstance(selected_pairs, list) else [selected_pairs])
     st.plotly_chart(fig, use_container_width=True)
 
 # === 8. Aparte grafieken per paar met EMA ===
