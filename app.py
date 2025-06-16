@@ -27,8 +27,12 @@ df = load_data()
 
 # === Herlaadknop voor handmatige refresh ===
 if st.button("🔄 Herlaad data van Supabase"):
-    st.cache_data.clear()
-    st.experimental_rerun()
+    try:
+        st.cache_data.clear()
+        st.rerun()
+    except Exception as e:
+        st.error("❌ Herladen mislukt. Details zijn gelogd.")
+        st.write(f"**Foutmelding:** `{e}`")
 
 min_date, max_date = df["date"].min().date(), df["date"].max().date()
 st.write("📆 Beschikbare datums:", min_date, "→", max_date)
