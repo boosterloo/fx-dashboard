@@ -28,8 +28,8 @@ st.markdown(
 )
 
 # === 3. Datumfilter in sidebar ===
-min_resp = supabase.table("fx_rates").select("date").order("date", desc=False).limit(1).execute()
-max_resp = supabase.table("fx_rates").select("date").order("date", desc=True).limit(1).execute()
+min_resp = supabase.table("fx_rates").select("date").order("date", ascending=True).limit(1).execute()
+max_resp = supabase.table("fx_rates").select("date").order("date", ascending=False).limit(1).execute()
 if not min_resp.data or not max_resp.data:
     st.error("Geen data beschikbaar.")
     st.stop()
@@ -64,7 +64,7 @@ def load_data(start_date, end_date):
             .select("*")
             .gte("date", start_date.strftime('%Y-%m-%d'))
             .lte("date", end_date.strftime('%Y-%m-%d'))
-            .order("date", asc=True)
+            .order("date", ascending=True)
             .range(offset, offset + limit - 1)
             .execute()
         )
@@ -74,14 +74,16 @@ def load_data(start_date, end_date):
         all_data.extend(chunk)
         offset += limit
     df = pd.DataFrame(all_data)
+    if df.empty:
+        return df
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"]).sort_values("date")
     # Omrekening ratios
-    df["EUR/USD"] = 1 / df["eur_usd"]
-    df["USD/JPY"] = df["usd_jpy"]
-    df["GBP/USD"] = 1 / df["gbp_usd"]
-    df["AUD/USD"] = 1 / df["aud_usd"]
-    df["USD/CHF"] = df["usd_chf"]
+    df["EUR/USD"] = 1 / df.get("eur_usd", pd.NA)
+    df["USD/JPY"] = df.get("usd_jpy", pd.NA)
+    df["GBP/USD"] = 1 / df.get("gbp_usd", pd.NA)
+    df["AUD/USD"] = 1 / df.get("aud_usd", pd.NA)
+    df["USD/CHF"] = df.get("usd_chf", pd.NA)
     return df
 
 # Haal gefilterde data op
