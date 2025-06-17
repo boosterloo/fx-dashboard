@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import pandas as pd
 from supabase import create_client
@@ -12,88 +13,111 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# === Sidebar Navigatie ===
-st.sidebar.header("Navigatie")
-menu = st.sidebar.radio("Kies onderdeel:", [
-    "FX Rates",
-    "SPX Opties",
-    "SP500 Index",
-    "AEX Index",
-    "Macro",
-    "Commodity",
-    "Sectoren",
-    "Yield Curve"
-])
+# === 2. Sidebar navigatie ===
+st.sidebar.title("Navigatie")
+section = st.sidebar.radio(
+    "Kies onderdeel:",
+    [
+        "FX Rates",
+        "SPX Opties",
+        "SP500 Index",
+        "AEX Index",
+        "Macro",
+        "Commodity",
+        "Sectoren",
+        "Yield Curve",
+    ],
+)
 
-# === Functie: FX Dashboard ===
-def fx_dashboard():
-    st.title("💱 FX Dashboard met EMA")
-    # ... (fx-dashboard code hier, paginatie, filters, EMA, etc.)
-    # Hergebruik je bestaande FX-sectie
+# Functie om FX sectie te tonen
+def show_fx():
+    st.markdown('<h1 style="text-align:center;">💱 FX Dashboard met EMA</h1>', unsafe_allow_html=True)
+    
+    # Data ophalen
+def load_fx_data():
+    all_data = []
+    offset = 0
+    limit = 1000
+    while True:
+        response = (
+            supabase
+            .table("fx_rates")
+            .select("*")
+            .order("date", desc=False)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        data = response.data
+        if not data:
+            break
+        all_data.extend(data)
+        offset += limit
+    df = pd.DataFrame(all_data)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
 
-# === Functie: SPX Opties ===
-def spx_opties():
-    st.title("📈 SPX Optieprijzen")
-    symbol = "^GSPC"
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        expiry = st.sidebar.date_input("Expiry datum", value=pd.to_datetime("today").date())
-    with col2:
-        strike = st.sidebar.number_input("Min strike", min_value=0.0, value=4000.0)
-    data = yf.Ticker(symbol).option_chain(expiry.strftime("%Y-%m-%d")).calls
-    df = data[data['strike'] >= strike]
-    st.write(df)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['strike'], y=df['lastPrice'], mode='lines+markers', name='Optieprijs'))
-    fig.update_layout(title=f"SPX Calls {expiry}", xaxis_title="Strike", yaxis_title="Last Price")
-    st.plotly_chart(fig, use_container_width=True)
+    df_fx = load_fx_data()
+    if df_fx.empty:
+        st.error("Geen FX data gevonden.")
+        return
 
-# === Functie: SP500 Index ===
-def sp500_index():
-    st.title("📊 S&P 500 Index")
-    df = yf.download('^GSPC', period='1y', interval='1d')
-    st.line_chart(df['Close'])
+    df_fx = df_fx.sort_values("date")
+    min_d, max_d = df_fx.date.min().date(), df_fx.date.max().date()
+    st.write(f"📆 Beschikbare datums: {min_d} → {max_d}")
 
-# === Functie: AEX Index ===
-def aex_index():
-    st.title("📊 AEX Index")
-    df = yf.download('^AEX', period='1y', interval='1d')
-    st.line_chart(df['Close'])
+    # Datumfilter
+    st.sidebar.header("Datumfilter")
+    start = st.sidebar.date_input("Startdatum", value=max_d - pd.DateOffset(months=3), min_value=min_d, max_value=max_d)
+    end = st.sidebar.date_input("Einddatum", value=max_d, min_value=min_d, max_value=max_d)
+    df_filt = df_fx[(df_fx.date >= pd.to_datetime(start)) & (df_fx.date <= pd.to_datetime(end))]
 
-# === Functie: Macro ===
-def macro():
-    st.title("📋 Macro Indicatoren")
-    st.write("# TODO: Voeg macro data toe")
+    # EMA Instellingen
+    st.sidebar.header("EMA-instellingen")
+    ema_periods = st.sidebar.multiselect("Kies EMA-periodes", [20, 50, 100], default=[20])
 
-# === Functie: Commodity ===
-def commodity():
-    st.title("⛽ Commodity Prijzen")
-    st.write("# TODO: Voeg commodity data toe")
+    # Overlay grafiek
+    with st.expander("Overlay FX paren (max 2)"):
+        pairs = [c for c in df_filt.columns if c.endswith('_usd') or c.startswith('usd_')]
+        sel = st.multiselect("Valutaparen:", pairs, default=pairs[:2])
+        if sel:
+            fig = go.Figure()
+            for i, p in enumerate(sel):
+                axis = 'y' if i == 0 else 'y2'
+                fig.add_trace(go.Scatter(x=df_filt.date, y=df_filt[p], name=p, yaxis=axis))
+            fig.update_layout(
+                yaxis2=dict(overlaying='y', side='right'),
+                legend=dict(orientation='h', y=1.1, x=1)
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-# === Functie: Sectoren ===
-def sectoren():
-    st.title("🏷️ Sector Performance")
-    st.write("# TODO: Voeg sector data toe")
+    # Aparte grafieken met EMA
+    st.subheader("Koersontwikkeling per FX paar met EMA")
+    for p in pairs:
+        st.markdown(f"### {p}")
+        d = df_filt[["date", p]].copy()
+        for per in ema_periods:
+            d[f"EMA{per}"] = d[p].ewm(span=per, adjust=False).mean()
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=d.date, y=d[p], name=p))
+        for per in ema_periods:
+            fig.add_trace(go.Scatter(x=d.date, y=d[f"EMA{per}"], name=f"EMA{per}", line_dash='dash'))
+        st.plotly_chart(fig, use_container_width=True)
 
-# === Functie: Yield Curve ===
-def yield_curve():
-    st.title("📈 Yield Curve")
-    st.write("# TODO: Voeg yield curve data toe (bv. staatsobligaties)")
-
-# === Roep juiste sectie aan ===
-if menu == "FX Rates":
-    fx_dashboard()
-elif menu == "SPX Opties":
-    spx_opties()
-elif menu == "SP500 Index":
-    sp500_index()
-elif menu == "AEX Index":
-    aex_index()
-elif menu == "Macro":
-    macro()
-elif menu == "Commodity":
-    commodity()
-elif menu == "Sectoren":
-    sectoren()
-elif menu == "Yield Curve":
-    yield_curve()
+# Hoofdlogica secties
+if section == "FX Rates":
+    show_fx()
+elif section == "SPX Opties":
+    st.write("SPX Opties - nog in te vullen")
+elif section == "SP500 Index":
+    st.write("SP500 Index - nog in te vullen")
+elif section == "AEX Index":
+    st.write("AEX Index - nog in te vullen")
+elif section == "Macro":
+    st.write("Macro - nog in te vullen")
+elif section == "Commodity":
+    st.write("Commodity - nog in te vullen")
+elif section == "Sectoren":
+    st.write("Sectoren - nog in te vullen")
+elif section == "Yield Curve":
+    st.write("Yield Curve - nog in te vullen")
+```
