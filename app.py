@@ -1,10 +1,10 @@
+```python
 import streamlit as st
 import pandas as pd
 from supabase import create_client
 import os
 from dotenv import load_dotenv
 import plotly.graph_objects as go
-import yfinance as yf
 
 # === 1. Omgevingsvariabelen laden ===
 load_dotenv()
@@ -12,140 +12,110 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# === 2. Sidebar navigatie ===
-st.sidebar.title("Navigatie")
-section = st.sidebar.radio(
-    "Kies onderdeel:",
-    [
-        "FX Rates",
-        "SPX Opties",
-        "SP500 Index",
-        "AEX Index",
-        "Macro",
-        "Commodity",
-        "Sectoren",
-        "Yield Curve",
-    ],
+# === 2. Titel ===
+st.markdown(
+    '<h1 style="text-align:center; color:#1E90FF;">💱 FX Dashboard met EMA</h1>',
+    unsafe_allow_html=True
 )
 
-# Mapping API kolommen naar data keys (reciproke waar nodig)
-PAIR_MAP = {
-    "eur_usd": "EUR/USD",    # frankfurter API geeft USD per EUR, we willen EUR/USD
-    "usd_jpy": "USD/JPY",
-    "gbp_usd": "GBP/USD",
-    "aud_usd": "AUD/USD",
-    "usd_chf": "USD/CHF",
-}
-
-# === FX sectie ===
-def show_fx():
-    st.markdown('<h1 style="text-align:center;">💱 FX Dashboard met EMA</h1>', unsafe_allow_html=True)
-    # Data ophalen
+# === 3. Data ophalen ===
+def load_data():
     all_data = []
     offset = 0
     limit = 1000
+    # Haal batches op om limiet van Supabase te omzeilen
     while True:
-        resp = (
-            supabase
-            .table("fx_rates")
-            .select("date," + ",".join(PAIR_MAP.keys()))
-            .order("date", desc=False)
-            .range(offset, offset + limit - 1)
-            .execute()
-        )
+        resp = (supabase.table("fx_rates")
+                .select("*")
+                .order("date", desc=False)
+                .range(offset, offset + limit - 1)
+                .execute())
         batch = resp.data
         if not batch:
             break
         all_data.extend(batch)
         offset += limit
     df = pd.DataFrame(all_data)
-    if df.empty:
-        st.error("Geen FX data gevonden.")
-        return
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values("date")
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
 
-    # Hernoem en reken om
-    for api_col, name in PAIR_MAP.items():
-        if api_col in df.columns:
-            if api_col.startswith("usd_"):
-                # API geeft 1 USD in target, we willen target per USD, dus direct
-                df[name] = df[api_col]
-            else:
-                # API geeft 1 EUR in USD, we willen USD per 1 EUR: direct eur_usd
-                df[name] = df[api_col]
-    # Verwijder oude kolommen
-    df = df[["date"] + list(PAIR_MAP.values())]
+    # Converteer raw kolommen naar juiste forex quotes
+    PAIR_MAP = {
+        "eur_usd": ("EUR/USD", lambda x: 1/x),   # raw: EUR per USD → USD per EUR
+        "usd_jpy": ("USD/JPY", lambda x: x),     # raw: JPY per USD → USD/JPY OK
+        "gbp_usd": ("GBP/USD", lambda x: 1/x),   # raw: GBP per USD → USD per GBP
+        "aud_usd": ("AUD/USD", lambda x: 1/x),   # raw: AUD per USD → USD per AUD
+        "usd_chf": ("USD/CHF", lambda x: x),     # raw: CHF per USD → USD/CHF OK
+    }
+    for raw, (label, func) in PAIR_MAP.items():
+        if raw in df.columns:
+            df[label] = df[raw].apply(func)
+    return df
 
-    # Beschikbare datums
-    min_d, max_d = df.date.min().date(), df.date.max().date()
-    st.write(f"📆 Beschikbare datums: {min_d} → {max_d}")
+# Cache met korte TTL, herlaadknop available
+@st.cache_data(ttl=300)
+def get_data():
+    return load_data()
 
-    # Datumfilter
-    st.sidebar.header("Datumfilter")
-    start = st.sidebar.date_input(
-        "Startdatum", value=max_d - pd.DateOffset(months=3), min_value=min_d, max_value=max_d
+df = get_data()
+if df.empty:
+    st.error("Geen FX-data beschikbaar.")
+    st.stop()
+
+# Handmatige herlaadknop
+if st.button("🔄 Herlaad data van Supabase"):
+    get_data.clear()
+    st.experimental_rerun()
+
+# Beschikbare datums tonen
+min_date = df["date"].min().date()
+max_date = df["date"].max().date()
+st.markdown(f"📆 Beschikbare datums: **{min_date} → {max_date}**")
+
+# --- Sidebar: Datumfilter & EMA-instellingen ---
+st.sidebar.header("Datumfilter")
+start = st.sidebar.date_input("Startdatum", min_value=min_date, max_value=max_date, value=min_date)
+end = st.sidebar.date_input("Einddatum", min_value=min_date, max_value=max_date, value=max_date)
+if pd.to_datetime(start) > pd.to_datetime(end):
+    st.sidebar.error("Startdatum moet vóór einddatum liggen.")
+    st.stop()
+df_filt = df[(df["date"] >= pd.to_datetime(start)) & (df["date"] <= pd.to_datetime(end))]
+
+st.sidebar.header("EMA-instellingen")
+ema_periods = st.sidebar.multiselect("📐 Kies EMA-periodes", [20, 50, 100], default=[20])
+
+# --- Overlay grafiek ---
+st.subheader("Overlay van valutaparen (max 2)")
+labels = [lbl for lbl, _ in [v for v in PAIR_MAP.values()]]
+selected = st.multiselect("Selecteer valutaparen", labels, default=["EUR/USD", "USD/JPY"])
+if selected:
+    fig = go.Figure()
+    for i, pair in enumerate(selected[:2]):
+        axis = "y1" if i == 0 else "y2"
+        fig.add_trace(go.Scatter(x=df_filt["date"], y=df_filt[pair], name=pair, yaxis=axis))
+    fig.update_layout(
+        xaxis=dict(title="Datum"),
+        yaxis=dict(title=selected[0], side="left"),
+        yaxis2=dict(title=selected[1] if len(selected)>1 else "", overlaying="y", side="right"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    end = st.sidebar.date_input(
-        "Einddatum", value=max_d, min_value=min_d, max_value=max_d
-    )
-    df_filt = df[(df.date >= pd.to_datetime(start)) & (df.date <= pd.to_datetime(end))]
+    st.plotly_chart(fig, use_container_width=True)
 
-    # EMA instellingen
-    st.sidebar.header("EMA-instellingen")
-    ema_periods = st.sidebar.multiselect(
-        "Kies EMA-periodes", [20, 50, 100], default=[20]
-    )
+# --- Aparte grafieken met EMA ---
+st.subheader("Koersontwikkeling per valutapaar met EMA")
+for pair in labels:
+    st.markdown(f"#### {pair}")
+    df_pair = df_filt[["date", pair]].copy()
+    for p in ema_periods:
+        df_pair[f"EMA{p}"] = df_pair[pair].ewm(span=p, adjust=False).mean()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_pair["date"], y=df_pair[pair], name=pair))
+    for p in ema_periods:
+        fig.add_trace(go.Scatter(x=df_pair["date"], y=df_pair[f"EMA{p}"], name=f"EMA{p}", line=dict(dash="dash")))
+    fig.update_layout(xaxis_title="Datum", yaxis_title="Koers", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    st.plotly_chart(fig, use_container_width=True)
+    st.metric(label=f"Laatste koers ({pair})", value=f"{df_pair[pair].iloc[-1]:.4f}")
 
-    # Overlay grafiek (max 2)
-    with st.expander("Overlay FX paren (max 2)"):
-        pairs = list(PAIR_MAP.values())
-        sel = st.multiselect("Valutaparen:", pairs, default=pairs[:2])
-        if sel:
-            fig = go.Figure()
-            for i, p in enumerate(sel):
-                axis = 'y' if i == 0 else 'y2'
-                fig.add_trace(go.Scatter(x=df_filt.date, y=df_filt[p], name=p, yaxis=axis))
-            fig.update_layout(
-                yaxis2=dict(overlaying='y', side='right'),
-                legend=dict(orientation='h', y=1.1, x=1)
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Aparte grafieken per paar met EMA
-    st.subheader("Koersontwikkeling per FX paar met EMA")
-    for p in PAIR_MAP.values():
-        st.markdown(f"### {p}")
-        d = df_filt[["date", p]].copy()
-        for per in ema_periods:
-            d[f"EMA{per}"] = d[p].ewm(span=per, adjust=False).mean()
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=d.date, y=d[p], name=p))
-        for per in ema_periods:
-            fig.add_trace(
-                go.Scatter(
-                    x=d.date,
-                    y=d[f"EMA{per}"],
-                    name=f"EMA{per}",
-                    line_dash='dash'
-                )
-            )
-        st.plotly_chart(fig, use_container_width=True)
-
-# === Sectie logica ===
-if section == "FX Rates":
-    show_fx()
-elif section == "SPX Opties":
-    st.write("SPX Opties - nog in te vullen")
-elif section == "SP500 Index":
-    st.write("SP500 Index - nog in te vullen")
-elif section == "AEX Index":
-    st.write("AEX Index - nog in te vullen")
-elif section == "Macro":
-    st.write("Macro - nog in te vullen")
-elif section == "Commodity":
-    st.write("Commodity - nog in te vullen")
-elif section == "Sectoren":
-    st.write("Sectoren - nog in te vullen")
-elif section == "Yield Curve":
-    st.write("Yield Curve - nog in te vullen")
+# --- Downloadoptie ---
+st.download_button("⬇️ Download als CSV", data=df_filt.to_csv(index=False), file_name="fx_data.csv")
+```
