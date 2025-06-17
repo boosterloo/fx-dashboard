@@ -28,6 +28,15 @@ section = st.sidebar.radio(
     ],
 )
 
+# Mapping API kolommen naar data keys (reciproke waar nodig)
+PAIR_MAP = {
+    "eur_usd": "EUR/USD",    # frankfurter API geeft USD per EUR, we willen EUR/USD
+    "usd_jpy": "USD/JPY",
+    "gbp_usd": "GBP/USD",
+    "aud_usd": "AUD/USD",
+    "usd_chf": "USD/CHF",
+}
+
 # === FX sectie ===
 def show_fx():
     st.markdown('<h1 style="text-align:center;">💱 FX Dashboard met EMA</h1>', unsafe_allow_html=True)
@@ -39,7 +48,7 @@ def show_fx():
         resp = (
             supabase
             .table("fx_rates")
-            .select("*")
+            .select("date," + ",".join(PAIR_MAP.keys()))
             .order("date", desc=False)
             .range(offset, offset + limit - 1)
             .execute()
@@ -55,6 +64,18 @@ def show_fx():
         return
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
+
+    # Hernoem en reken om
+    for api_col, name in PAIR_MAP.items():
+        if api_col in df.columns:
+            if api_col.startswith("usd_"):
+                # API geeft 1 USD in target, we willen target per USD, dus direct
+                df[name] = df[api_col]
+            else:
+                # API geeft 1 EUR in USD, we willen USD per 1 EUR: direct eur_usd
+                df[name] = df[api_col]
+    # Verwijder oude kolommen
+    df = df[["date"] + list(PAIR_MAP.values())]
 
     # Beschikbare datums
     min_d, max_d = df.date.min().date(), df.date.max().date()
@@ -78,7 +99,7 @@ def show_fx():
 
     # Overlay grafiek (max 2)
     with st.expander("Overlay FX paren (max 2)"):
-        pairs = [c for c in df_filt.columns if c.endswith("_usd") or c.startswith("usd_")]
+        pairs = list(PAIR_MAP.values())
         sel = st.multiselect("Valutaparen:", pairs, default=pairs[:2])
         if sel:
             fig = go.Figure()
@@ -93,7 +114,7 @@ def show_fx():
 
     # Aparte grafieken per paar met EMA
     st.subheader("Koersontwikkeling per FX paar met EMA")
-    for p in pairs:
+    for p in PAIR_MAP.values():
         st.markdown(f"### {p}")
         d = df_filt[["date", p]].copy()
         for per in ema_periods:
