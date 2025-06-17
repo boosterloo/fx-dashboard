@@ -21,14 +21,15 @@ menu = st.sidebar.radio("Kies onderdeel:", [
     "AEX Index",
     "Macro",
     "Commodity",
-    "Sectoren"
+    "Sectoren",
+    "Yield Curve"
 ])
 
 # === Functie: FX Dashboard ===
 def fx_dashboard():
     st.title("💱 FX Dashboard met EMA")
     # ... (fx-dashboard code hier, paginatie, filters, EMA, etc.)
-    # brevity; hergebruik je bestaande FX-sectie
+    # Hergebruik je bestaande FX-sectie
 
 # === Functie: SPX Opties ===
 def spx_opties():
@@ -74,6 +75,11 @@ def sectoren():
     st.title("🏷️ Sector Performance")
     st.write("# TODO: Voeg sector data toe")
 
+# === Functie: Yield Curve ===
+def yield_curve():
+    st.title("📈 Yield Curve")
+    st.write("# TODO: Voeg yield curve data toe (bv. staatsobligaties)")
+
 # === Roep juiste sectie aan ===
 if menu == "FX Rates":
     fx_dashboard()
@@ -89,3 +95,5 @@ elif menu == "Commodity":
     commodity()
 elif menu == "Sectoren":
     sectoren()
+elif menu == "Yield Curve":
+    yield_curve()
