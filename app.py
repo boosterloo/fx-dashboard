@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import pandas as pd
 from supabase import create_client
@@ -129,4 +128,3 @@ elif section == "Sectoren":
     st.write("Sectoren - nog in te vullen")
 elif section == "Yield Curve":
     st.write("Yield Curve - nog in te vullen")
-```
