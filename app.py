@@ -40,7 +40,7 @@ st.sidebar.write(f"📆 Beschikbaar: {min_date} → {max_date}")
 st.sidebar.header("📅 Datumfilter")
 def default_range():
     end = max_date
-    start = end - pd.DateOffset(years=5)
+    start = end - pd.DateOffset(months=3)  # afgelopen 3 maanden
     return start.date(), end
 
 start_def, end_def = default_range()
