@@ -28,8 +28,8 @@ st.markdown(
 )
 
 # === 3. Datumfilter in sidebar ===
-min_resp = supabase.table("fx_rates").select("date").order("date", ascending=True).limit(1).execute()
-max_resp = supabase.table("fx_rates").select("date").order("date", ascending=False).limit(1).execute()
+min_resp = supabase.table("fx_rates").select("date").order("date").limit(1).execute()
+max_resp = supabase.table("fx_rates").select("date").order("date", desc=True).limit(1).execute()
 if not min_resp.data or not max_resp.data:
     st.error("Geen data beschikbaar.")
     st.stop()
@@ -64,7 +64,7 @@ def load_data(start_date, end_date):
             .select("*")
             .gte("date", start_date.strftime('%Y-%m-%d'))
             .lte("date", end_date.strftime('%Y-%m-%d'))
-            .order("date", ascending=True)
+            .order("date")
             .range(offset, offset + limit - 1)
             .execute()
         )
