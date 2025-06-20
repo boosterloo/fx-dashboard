@@ -1,12 +1,22 @@
 import streamlit as st
 
-st.set_page_config(page_title="Eastwood Quantum Analytics", layout="wide")
-st.title("📊 Welkom bij het Eastwood Dashboard")
+# Pagina-instellingen
+st.set_page_config(page_title="Eastwood Dashboard", layout="wide")
 
+# Welkomsttekst en navigatie
 st.markdown("""
-Welkom! Gebruik de navigatie links om een dashboard te kiezen:
+# 📊 Welkom bij het Eastwood Dashboard
 
-- 💱 FX Rates
-- 📈 SPX Opties
-- 📊 Macro, Indexen, Sectoren (binnenkort)
-""")
+Welkom! Gebruik de navigatie links óf onderstaande links om een dashboard te kiezen:
+
+---
+
+### 📂 Beschikbare Dashboards
+
+- [💱 FX Rates](?page=1_FX_Rates)
+- [📈 SPX Opties](?page=2_SPX_Opties)
+- 🧪 Macro, Indexen, Sectoren (binnenkort)
+
+---
+
+""", unsafe_allow_html=True)
