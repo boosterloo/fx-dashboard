@@ -1,16 +1,14 @@
 import streamlit as st
 
-# === Pagina-instellingen
-st.set_page_config(page_title="FX Dashboard", layout="wide")
+st.set_page_config(page_title="Eastwood Quantum Analytics", layout="wide")
 
-# === Sidebar navigatie
-st.sidebar.title("📊 Navigatie")
-page = st.sidebar.selectbox("Kies een pagina", ["Home", "SPX Opties"])
+st.sidebar.title("🔍 Navigatie")
+selection = st.sidebar.radio("Kies onderdeel:", [
+    "FX Rates", "SPX Opties", "SP500 Index", "AEX Index",
+    "Macro", "Commodity", "Sectoren", "Yield Curve"
+])
 
-# === Routing
-if page == "Home":
-    st.title("Welkom bij het FX Dashboard")
-    st.write("Gebruik de sidebar om een pagina te kiezen.")
-
-elif page == "SPX Opties":
+if selection == "SPX Opties":
     import spx_opties
+else:
+    st.markdown(f"📌 Sectie '{selection}' nog in ontwikkeling")
