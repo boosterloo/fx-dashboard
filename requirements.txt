@@ -1,8 +1,6 @@
 streamlit
+streamlit-extras
 pandas
-psycopg2-binary
-altair
-python-dotenv
-supabase
 plotly
-yfinance
+supabase
+python-dotenv
