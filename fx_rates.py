@@ -1,28 +1,36 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client
-import os
-from dotenv import load_dotenv
 import plotly.graph_objects as go
+import os
+from supabase import create_client
+from dotenv import load_dotenv
+import pathlib
 
-# === Supabase verbinding ===
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# === Supabase client setup ===
+def get_supabase_client():
+    env_path = pathlib.Path(".") / ".env"
+    load_dotenv(dotenv_path=env_path)
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("❌ Supabase keys niet gevonden — check .env")
+    return create_client(url, key)
 
-# === Titel ===
+supabase = get_supabase_client()
+
+# === Titel
 st.markdown(
     '<h1 style="text-align:center; color:#1E90FF;">💱 FX Dashboard met EMA</h1>',
     unsafe_allow_html=True
 )
 
-# === Datumfilter ===
+# === Datumfilter
 min_resp = supabase.table("fx_rates").select("date").order("date").limit(1).execute()
 max_resp = supabase.table("fx_rates").select("date").order("date", desc=True).limit(1).execute()
 if not min_resp.data or not max_resp.data:
     st.error("Geen data beschikbaar.")
     st.stop()
+
 min_date = pd.to_datetime(min_resp.data[0]["date"]).date()
 max_date = pd.to_datetime(max_resp.data[0]["date"]).date()
 st.sidebar.write(f"📆 Beschikbaar: {min_date} → {max_date}")
@@ -41,7 +49,7 @@ if start > end:
     st.sidebar.error("Startdatum moet voor Einddatum zijn.")
     st.stop()
 
-# === Data ophalen met paginatie ===
+# === Data ophalen
 @st.cache_data(ttl=3600)
 def load_data(start_date, end_date):
     all_data = []
@@ -79,11 +87,11 @@ if df.empty:
     st.warning("Geen FX-data gevonden voor deze periode.")
     st.stop()
 
-# === EMA instellingen ===
+# === EMA instellingen
 st.sidebar.header("📐 EMA-instellingen")
 ema_periods = st.sidebar.multiselect("Kies EMA-periodes", [20, 50, 100], default=[20])
 
-# === Overlay dual-axis ===
+# === Overlay grafiek
 st.subheader("📈 Overlay van valutaparen (max 2)")
 avail = ["EUR/USD", "USD/JPY", "GBP/USD", "AUD/USD", "USD/CHF"]
 defs = ["EUR/USD", "USD/JPY"]
@@ -96,12 +104,12 @@ if selected:
     fig.update_layout(
         xaxis=dict(title="Datum"),
         yaxis=dict(title=selected[0], side="left"),
-        yaxis2=dict(title=selected[1] if len(selected) > 1 else "", overlaying="y", side="right"),
+        yaxis2=dict(title=selected[1], overlaying="y", side="right") if len(selected) > 1 else {},
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# === Individuele grafieken met EMA ===
+# === Individuele grafieken met EMA
 st.subheader("📊 Koersontwikkeling per valutapaar met EMA")
 for pair in avail:
     st.markdown(f"### {pair}")
@@ -120,5 +128,5 @@ for pair in avail:
     st.plotly_chart(fig, use_container_width=True)
     st.metric(f"Laatste koers {pair}", f"{d[pair].iloc[-1]:.4f}")
 
-# === Downloadknop ===
+# === Download
 st.download_button("⬇️ Download CSV", data=df.to_csv(index=False), file_name="fx_data.csv")
