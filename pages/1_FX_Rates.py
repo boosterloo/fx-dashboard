@@ -1,30 +1,20 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import os
 from supabase import create_client
-from dotenv import load_dotenv
-import pathlib
 
-# === Supabase client setup ===
+# === Supabase verbinden via secrets ===
 def get_supabase_client():
-    env_path = pathlib.Path(".") / ".env"
-    load_dotenv(dotenv_path=env_path)
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not url or not key:
-        raise RuntimeError("❌ Supabase keys niet gevonden — check .env")
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 supabase = get_supabase_client()
 
 # === Titel
-st.markdown(
-    '<h1 style="text-align:center; color:#1E90FF;">💱 FX Dashboard met EMA</h1>',
-    unsafe_allow_html=True
-)
+st.markdown('<h1 style="text-align:center; color:#1E90FF;">💱 FX Dashboard met EMA</h1>', unsafe_allow_html=True)
 
-# === Datumfilter
+# === Datumfilter ophalen
 min_resp = supabase.table("fx_rates").select("date").order("date").limit(1).execute()
 max_resp = supabase.table("fx_rates").select("date").order("date", desc=True).limit(1).execute()
 if not min_resp.data or not max_resp.data:
@@ -35,15 +25,11 @@ min_date = pd.to_datetime(min_resp.data[0]["date"]).date()
 max_date = pd.to_datetime(max_resp.data[0]["date"]).date()
 st.sidebar.write(f"📆 Beschikbaar: {min_date} → {max_date}")
 
+# === Datumselectie
 st.sidebar.header("📅 Datumfilter")
-def default_range():
-    end = max_date
-    start = end - pd.DateOffset(months=3)
-    return start.date(), end
-
-start_def, end_def = default_range()
-start = st.sidebar.date_input("Startdatum", value=start_def, min_value=min_date, max_value=max_date)
-end = st.sidebar.date_input("Einddatum", value=end_def, min_value=min_date, max_value=max_date)
+start_def = max_date - pd.DateOffset(months=3)
+start = st.sidebar.date_input("Startdatum", value=start_def.date(), min_value=min_date, max_value=max_date)
+end = st.sidebar.date_input("Einddatum", value=max_date, min_value=min_date, max_value=max_date)
 start, end = pd.to_datetime(start), pd.to_datetime(end)
 if start > end:
     st.sidebar.error("Startdatum moet voor Einddatum zijn.")
@@ -73,7 +59,7 @@ def load_data(start_date, end_date):
     df = pd.DataFrame(all_data)
     if df.empty:
         return df
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["date"] = pd.to_datetime(df["date"])
     df = df.dropna(subset=["date"]).sort_values("date")
     df["EUR/USD"] = 1 / df.get("eur_usd", pd.NA)
     df["USD/JPY"] = df.get("usd_jpy", pd.NA)
@@ -91,11 +77,10 @@ if df.empty:
 st.sidebar.header("📐 EMA-instellingen")
 ema_periods = st.sidebar.multiselect("Kies EMA-periodes", [20, 50, 100], default=[20])
 
-# === Overlay grafiek
+# === Overlay
 st.subheader("📈 Overlay van valutaparen (max 2)")
 avail = ["EUR/USD", "USD/JPY", "GBP/USD", "AUD/USD", "USD/CHF"]
-defs = ["EUR/USD", "USD/JPY"]
-selected = st.multiselect("Selecteer valutaparen", avail, default=defs)
+selected = st.multiselect("Selecteer valutaparen", avail, default=["EUR/USD", "USD/JPY"])
 if selected:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df["date"], y=df[selected[0]], name=selected[0], yaxis="y1"))
@@ -109,7 +94,7 @@ if selected:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# === Individuele grafieken met EMA
+# === Grafieken per paar met EMA
 st.subheader("📊 Koersontwikkeling per valutapaar met EMA")
 for pair in avail:
     st.markdown(f"### {pair}")
@@ -120,11 +105,7 @@ for pair in avail:
     fig.add_trace(go.Scatter(x=d["date"], y=d[pair], name=pair, line=dict(color="blue")))
     for p in ema_periods:
         fig.add_trace(go.Scatter(x=d["date"], y=d[f"EMA{p}"], name=f"EMA{p}", line=dict(dash="dash")))
-    fig.update_layout(
-        xaxis_title="Datum",
-        yaxis_title="Koers",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    fig.update_layout(xaxis_title="Datum", yaxis_title="Koers")
     st.plotly_chart(fig, use_container_width=True)
     st.metric(f"Laatste koers {pair}", f"{d[pair].iloc[-1]:.4f}")
 

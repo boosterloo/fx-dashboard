@@ -1,24 +1,16 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
-from supabase import create_client, Client
-from dotenv import load_dotenv
-import pathlib
+from supabase import create_client
 
-# === Supabase client setup ===
-def get_supabase_client() -> Client:
-    env_path = pathlib.Path(".") / ".env"
-    load_dotenv(dotenv_path=env_path)
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not url or not key:
-        raise RuntimeError("❌ Supabase keys niet gevonden — check .env")
+# === Supabase via Streamlit secrets
+def get_supabase_client():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 supabase = get_supabase_client()
 
-# === Titel
 st.title("📈 SPX Opties: PPD-verloop per Strike")
 
 # === Data ophalen
@@ -35,7 +27,7 @@ def load_data():
 
 df = load_data()
 
-# === Sidebar filters
+# === Sidebar
 with st.sidebar:
     st.header("🔎 Filters")
     option_type = st.selectbox("Type optie", sorted(df["type"].dropna().unique()))
@@ -45,23 +37,24 @@ with st.sidebar:
         (df["expiration"].dt.date == expiration)
     ]["strike"].dropna().unique()
     if len(filtered_strikes) == 0:
-        st.warning("⚠️ Geen strikes gevonden voor deze combinatie.")
+        st.warning("⚠️ Geen strikes gevonden.")
         st.stop()
     strike = st.selectbox("Strike", sorted(filtered_strikes))
 
-# === Filteren
+# === Filter
 filtered_df = df[
     (df["type"] == option_type) &
     (df["expiration"].dt.date == expiration) &
     (df["strike"] == strike)
 ].sort_values("snapshot_date")
 
-# === Debug + Visualisatie
-st.write(f"🔎 {len(filtered_df)} rijen gevonden voor {option_type.upper()} {strike} exp. {expiration}")
+# === Debug info
+st.write(f"🔍 {len(filtered_df)} rijen gevonden voor {option_type.upper()} {strike} exp. {expiration}")
 st.dataframe(filtered_df[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]].head(10))
 
+# === Plot
 if filtered_df.empty:
-    st.warning("⚠️ Geen data gevonden voor deze combinatie.")
+    st.warning("⚠️ Geen data gevonden.")
 else:
     fig = px.line(
         filtered_df,
