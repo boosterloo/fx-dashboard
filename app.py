@@ -1,19 +1,12 @@
 import streamlit as st
 
 st.set_page_config(page_title="Eastwood Quantum Analytics", layout="wide")
+st.title("📊 Welkom bij het Eastwood Dashboard")
 
-st.sidebar.title("🔍 Navigatie")
-selection = st.sidebar.radio("Kies onderdeel:", [
-    "FX Rates", "SPX Opties", "SP500 Index", "AEX Index",
-    "Macro", "Commodity", "Sectoren", "Yield Curve"
-])
+st.markdown("""
+Welkom! Gebruik de navigatie links om een dashboard te kiezen:
 
-# Routing
-if selection == "FX Rates":
-    import fx_rates
-
-elif selection == "SPX Opties":
-    import spx_opties
-
-else:
-    st.markdown(f"📌 Sectie '{selection}' nog in ontwikkeling")
+- 💱 FX Rates
+- 📈 SPX Opties
+- 📊 Macro, Indexen, Sectoren (binnenkort)
+""")
