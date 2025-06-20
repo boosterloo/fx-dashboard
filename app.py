@@ -8,7 +8,12 @@ selection = st.sidebar.radio("Kies onderdeel:", [
     "Macro", "Commodity", "Sectoren", "Yield Curve"
 ])
 
-if selection == "SPX Opties":
+# Routing
+if selection == "FX Rates":
+    import fx_rates
+
+elif selection == "SPX Opties":
     import spx_opties
+
 else:
     st.markdown(f"📌 Sectie '{selection}' nog in ontwikkeling")

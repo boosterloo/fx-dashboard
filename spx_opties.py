@@ -6,72 +6,65 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 import pathlib
 
-# === .env inladen
+# === Load .env
 env_path = pathlib.Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# === Supabase client aanmaken
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# === Pagina setup
-st.title("📈 SPX Opties Analyse")
-st.markdown("Visualisatie van premium per dag (PPD) per strike")
+# === Titel
+st.title("📈 SPX Opties: PPD-verloop per Strike")
 
 # === Data ophalen
 @st.cache_data(ttl=600)
 def load_data():
     response = supabase.table("spx_options").select("*").execute()
     df = pd.DataFrame(response.data)
-    
-    # Zet kolomnamen naar snake_case voor consistentie
     df.columns = [col.lower() for col in df.columns]
-
-    # Datums goed zetten
     df['snapshot_date'] = pd.to_datetime(df['snapshot_date'])
     df['expiration'] = pd.to_datetime(df['expiration'])
-
-    # Bereken Premium per Dag (PPD)
-    df['PPD'] = ((df['bid'] + df['ask']) / 2) / df['days_to_exp']
-
+    df['ppd'] = ((df['bid'] + df['ask']) / 2) / df['days_to_exp']
     return df
 
 df = load_data()
 
-# === Sidebar filters
+# === Sidebar filters ===
 with st.sidebar:
-    st.header("📅 Filters")
-    date_options = sorted(df['snapshot_date'].dt.date.unique(), reverse=True)
-    exp_options = sorted(df['expiration'].dt.date.unique())
+    st.header("🔎 Filter")
+    option_type = st.selectbox("Type optie", sorted(df["type"].unique()))
+    expiration = st.selectbox("Expiratiedatum", sorted(df["expiration"].dt.date.unique()))
+    
+    # Alleen strikes tonen die passen bij type+expiry
+    strikes = df[
+        (df["type"] == option_type) &
+        (df["expiration"].dt.date == expiration)
+    ]["strike"].unique()
+    strike = st.selectbox("Strike", sorted(strikes))
 
-    selected_date = st.selectbox("Snapshot Date", date_options)
-    selected_exp = st.selectbox("Expiration Date", exp_options)
-
-# === Filteren op selectie
+# === Filter dataset op selectie
 filtered_df = df[
-    (df['snapshot_date'].dt.date == selected_date) &
-    (df['expiration'].dt.date == selected_exp)
-]
+    (df["type"] == option_type) &
+    (df["expiration"].dt.date == expiration) &
+    (df["strike"] == strike)
+].sort_values("snapshot_date")
 
-# === Plot
 if filtered_df.empty:
-    st.warning("⚠️ Geen data beschikbaar voor deze selectie.")
+    st.warning("⚠️ Geen data gevonden voor deze combinatie.")
 else:
-    fig = px.scatter(
+    fig = px.line(
         filtered_df,
-        x="strike",
-        y="PPD",
-        color="type",
-        size="open_interest",
-        hover_data=["contract_symbol", "implied_volatility", "volume"],
-        title=f"PPD per Strike — Snapshot: {selected_date}, Exp: {selected_exp}"
+        x="snapshot_date",
+        y="ppd",
+        markers=True,
+        title=f"PPD-verloop — {option_type.upper()} {strike} exp. {expiration}"
     )
     fig.update_layout(
-        height=600,
-        xaxis_title="Strike",
-        yaxis_title="Premium per Dag (PPD)",
-        legend_title="Type Optie"
+        xaxis_title="Peildatum",
+        yaxis_title="Premium per dag (PPD)",
+        height=500
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(filtered_df[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]])
