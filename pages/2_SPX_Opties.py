@@ -33,8 +33,15 @@ df["expiration"] = pd.to_datetime(df["expiration"]).dt.date
 # === Filters ===
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", df["type"].unique())
-expiratie = st.sidebar.selectbox("Expiratiedatum", sorted(df["expiration"].unique()))
-strike = st.sidebar.selectbox("Strike", sorted(df[df["expiration"] == expiratie]["strike"].unique()))
+
+# Dynamisch filteren op expiraties obv gekozen optie-type
+beschikbare_expiraties = sorted(df[df["type"] == type_optie]["expiration"].unique())
+expiratie = st.sidebar.selectbox("Expiratiedatum", beschikbare_expiraties)
+
+# Dynamisch filteren op strikes obv gekozen optie-type en expiratie
+df_subset = df[(df["type"] == type_optie) & (df["expiration"] == expiratie)]
+beschikbare_strikes = sorted(df_subset["strike"].unique())
+strike = st.sidebar.selectbox("Strike", beschikbare_strikes)
 
 # === Filteren ===
 df_filtered = df[(df["type"] == type_optie) & (df["expiration"] == expiratie) & (df["strike"] == strike)]
