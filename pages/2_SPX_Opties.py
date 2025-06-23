@@ -16,12 +16,19 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch data
-@st.cache_data(ttl=3600)  # Cache voor 1 uur
-def fetch_data(table_name, type_optie, expiratie, strike):
-    response = supabase.table(table_name).select("*").eq("type", type_optie).eq("expiration", str(expiratie)).eq("strike", strike).execute()
-    if response.data:
-        df = pd.DataFrame(response.data)
+# Fetch data in chunks
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=500):
+    offset = 0
+    all_data = []
+    while True:
+        response = supabase.table(table_name).select("*").eq("type", type_optie).eq("expiration", str(expiratie)).eq("strike", strike).range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        all_data.extend(response.data)
+        offset += batch_size
+    if all_data:
+        df = pd.DataFrame(all_data)
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
         df["expiration"] = pd.to_datetime(df["expiration"], errors="coerce").dt.date
         return df.sort_values("snapshot_date")
@@ -34,7 +41,7 @@ type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiratie = st.sidebar.selectbox("Expiratiedatum", ["2025-06-20"])  # Pas aan met beschikbare data
 strike = st.sidebar.selectbox("Strike", [200.0, 400.0, 600.0, 800.0, 1000.0])  # Pas aan met beschikbare strikes
 
-df_filtered = fetch_data(table_name, type_optie, expiratie, strike)
+df_filtered = fetch_data_in_chunks(table_name, type_optie, expiratie, strike)
 
 if not df_filtered.empty:
     st.write("Aantal peildata:", len(df_filtered))  # Debug: Toon aantal rijen
