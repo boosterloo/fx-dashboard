@@ -41,7 +41,7 @@ df_type = df[df["type"] == type_optie]
 beschikbare_expiraties = sorted(df_type["expiration"].dropna().unique())
 expiratie = st.sidebar.selectbox("Expiratiedatum", beschikbare_expiraties)
 
-# Strikes op basis van type én expiratie (dus meerdere snapshot_dates mogelijk)
+# Strikes op basis van alle data voor type + expiratie, ongeacht snapshot moment
 df_exp = df_type[df_type["expiration"] == expiratie]
 beschikbare_strikes = sorted(df_exp["strike"].dropna().unique())
 strike = st.sidebar.selectbox("Strike", beschikbare_strikes)
