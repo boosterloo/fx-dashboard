@@ -1,71 +1,57 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from supabase import create_client
+import altair as alt
+from supabase import create_client, Client
+import os
 
-# === Supabase via Streamlit secrets
-def get_supabase_client():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+st.set_page_config(page_title="SPX Opties", layout="wide")
 
-supabase = get_supabase_client()
+# === Supabase instellingen ===
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# === Gegevens ophalen uit de nieuwe SPX-tabel ===
+table_name = "spx_options2"
+response = supabase.table(table_name).select("*").execute()
+
+if hasattr(response, "error") and response.error:
+    st.error(f"Fout bij ophalen data: {response.error}")
+    st.stop()
+
+# === DataFrame maken ===
+df = pd.DataFrame(response.data)
+
+if df.empty:
+    st.warning("Geen data beschikbaar in Supabase-tabel.")
+    st.stop()
+
+# === Conversie kolommen ===
+df["snapshot_date"] = pd.to_datetime(df["snapshot_date"])
+df["expiration"] = pd.to_datetime(df["expiration"]).dt.date
+
+# === Filters ===
+st.sidebar.header("🔍 Filters")
+type_optie = st.sidebar.selectbox("Type optie", df["type"].unique())
+expiratie = st.sidebar.selectbox("Expiratiedatum", sorted(df["expiration"].unique()))
+strike = st.sidebar.selectbox("Strike", sorted(df[df["expiration"] == expiratie]["strike"].unique()))
+
+# === Filteren ===
+df_filtered = df[(df["type"] == type_optie) & (df["expiration"] == expiratie) & (df["strike"] == strike)]
+df_filtered = df_filtered.sort_values("snapshot_date")
+
+# === Weergave ===
 st.title("📈 SPX Opties: PPD-verloop per Strike")
+st.markdown(f"🔍 {len(df_filtered)} rijen gevonden voor {type_optie.upper()} {strike} exp. {expiratie}")
 
-# === Data ophalen
-@st.cache_data(ttl=600)
-def load_data():
-    response = supabase.table("spx_options").select("*").execute()
-    df = pd.DataFrame(response.data)
-    df.columns = [col.lower() for col in df.columns]
-    df['snapshot_date'] = pd.to_datetime(df['snapshot_date'])
-    df['expiration'] = pd.to_datetime(df['expiration'])
-    df = df[df['days_to_exp'] > 0]
-    df['ppd'] = ((df['bid'] + df['ask']) / 2) / df['days_to_exp']
-    return df
+st.dataframe(df_filtered[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]])
 
-df = load_data()
+chart = alt.Chart(df_filtered).mark_circle(size=80).encode(
+    x=alt.X("snapshot_date:T", title="Peildatum"),
+    y=alt.Y("ppd:Q", title="Premium per dag (PPD)"),
+    tooltip=["snapshot_date", "ppd", "last_price", "bid", "ask"]
+).interactive().properties(
+    title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}"
+)
 
-# === Sidebar
-with st.sidebar:
-    st.header("🔎 Filters")
-    option_type = st.selectbox("Type optie", sorted(df["type"].dropna().unique()))
-    expiration = st.selectbox("Expiratiedatum", sorted(df["expiration"].dt.date.unique()))
-    filtered_strikes = df[
-        (df["type"] == option_type) &
-        (df["expiration"].dt.date == expiration)
-    ]["strike"].dropna().unique()
-    if len(filtered_strikes) == 0:
-        st.warning("⚠️ Geen strikes gevonden.")
-        st.stop()
-    strike = st.selectbox("Strike", sorted(filtered_strikes))
-
-# === Filter
-filtered_df = df[
-    (df["type"] == option_type) &
-    (df["expiration"].dt.date == expiration) &
-    (df["strike"] == strike)
-].sort_values("snapshot_date")
-
-# === Debug info
-st.write(f"🔍 {len(filtered_df)} rijen gevonden voor {option_type.upper()} {strike} exp. {expiration}")
-st.dataframe(filtered_df[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]].head(10))
-
-# === Plot
-if filtered_df.empty:
-    st.warning("⚠️ Geen data gevonden.")
-else:
-    fig = px.line(
-        filtered_df,
-        x="snapshot_date",
-        y="ppd",
-        markers=True,
-        title=f"PPD-verloop — {option_type.upper()} {strike} exp. {expiration}"
-    )
-    fig.update_layout(
-        xaxis_title="Peildatum",
-        yaxis_title="Premium per dag (PPD)",
-        height=500
-    )
-    st.plotly_chart(fig, use_container_width=True)
+st.altair_chart(chart, use_container_width=True)
