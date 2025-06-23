@@ -16,6 +16,14 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Fetch unique values for filters
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_unique_values(table_name, column):
+    response = supabase.table(table_name).select(column).execute()
+    if response.data:
+        return sorted(list(set(row[column] for row in response.data if row[column] is not None)))
+    return []
+
 # Fetch data in chunks
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=500):
@@ -38,8 +46,12 @@ def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=5
 table_name = "spx_options2"
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
-expiratie = st.sidebar.selectbox("Expiratiedatum", ["2025-07-01"])  # Aangepast naar je query
-strike = st.sidebar.selectbox("Strike", [6000.0])  # Aangepast naar je query
+
+# Get dynamic filter options
+expiraties = get_unique_values(table_name, "expiration")
+expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
+strikes = get_unique_values(table_name, "strike")
+strike = st.sidebar.selectbox("Strike", strikes)
 
 df_filtered = fetch_data_in_chunks(table_name, type_optie, expiratie, strike)
 
