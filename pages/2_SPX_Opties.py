@@ -18,36 +18,26 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Cache data fetch
 @st.cache_data(ttl=3600)  # Cache voor 1 uur
-def fetch_data(table_name, type_optie):
-    response = supabase.table(table_name).select("*").eq("type", type_optie).execute()
+def fetch_data(table_name, type_optie, expiratie, strike):
+    response = supabase.table(table_name).select("*").eq("type", type_optie).eq("expiration", str(expiratie)).eq("strike", strike).execute()
     if response.data:
         df = pd.DataFrame(response.data)
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
         df["expiration"] = pd.to_datetime(df["expiration"], errors="coerce").dt.date
-        return df
+        return df.sort_values("snapshot_date")
     return pd.DataFrame()
 
 # Load data
 table_name = "spx_options2"
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
+expiratie = st.sidebar.selectbox("Expiratiedatum", ["2025-06-20"])  # Pas aan met beschikbare data
+strike = st.sidebar.selectbox("Strike", [200.0, 400.0, 600.0, 800.0, 1000.0])  # Pas aan met beschikbare strikes
 
-df = fetch_data(table_name, type_optie)
-
-# Apply additional filters
-beschikbare_expiraties = sorted(df["expiration"].dropna().unique())
-expiratie = st.sidebar.selectbox("Expiratiedatum", beschikbare_expiraties)
-df_expiration = df[df["expiration"] == expiratie]
-
-beschikbare_strikes = sorted(df_expiration["strike"].dropna().unique())
-strike = st.sidebar.selectbox("Strike", beschikbare_strikes)
-df_filtered = df_expiration[df_expiration["strike"] == strike].sort_values("snapshot_date")
-
-st.write("Gefilterde rijen:", len(df_filtered))  # Debug: Toon aantal gefilterde rijen
+df_filtered = fetch_data(table_name, type_optie, expiratie, strike)
 
 if not df_filtered.empty:
-    st.dataframe(df_filtered[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]])
-
+    st.write("Aantal peildata:", len(df_filtered))  # Debug: Toon aantal rijen
     # Chart
     chart = alt.Chart(df_filtered).mark_line(point=True).encode(
         x=alt.X("snapshot_date:T", title="Peildatum"),
