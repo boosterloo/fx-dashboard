@@ -16,16 +16,24 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch data
+# Fetch data in batches
+def fetch_data_in_batches(table_name, batch_size=1000, max_rows=None):
+    offset = 0
+    all_data = []
+    while True:
+        response = supabase.table(table_name).select("*").range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        all_data.extend(response.data)
+        offset += batch_size
+        if max_rows and len(all_data) >= max_rows:
+            break
+    return pd.DataFrame(all_data)
+
+# Load data
 table_name = "spx_options2"
-response = supabase.table(table_name).select("*").execute()
-
-if response.data is None:
-    st.error(f"Fout bij ophalen data: {response}")
-    st.stop()
-
-df = pd.DataFrame(response.data)
-st.write("Alle geladen data:", df)  # Debug: Toon alle geladen data
+df = fetch_data_in_batches(table_name, batch_size=500)  # Pas batch_size aan naar wens
+st.write("Totaal geladen rijen:", len(df))  # Debug: Toon totaal aantal rijen
 
 # Convert columns
 df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
@@ -45,14 +53,10 @@ strike = st.sidebar.selectbox("Strike", beschikbare_strikes)
 
 # Filter data
 df_filtered = df_expiration[df_expiration["strike"] == strike].sort_values("snapshot_date")
-st.write("Gefilterde data:", df_filtered)  # Debug: Toon gefilterde data
-
-# Display
-st.title("📈 SPX Opties: PPD-verloop per Strike")
-st.markdown(f"🔍 {len(df_filtered)} rijen gevonden voor {type_optie.upper()} {strike} exp. {expiratie}")
-
+st.write("Gefilterde rijen:", len(df_filtered))  # Debug: Toon aantal gefilterde rijen
 st.dataframe(df_filtered[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]])
 
+# Chart
 chart = alt.Chart(df_filtered).mark_line(point=True).encode(
     x=alt.X("snapshot_date:T", title="Peildatum"),
     y=alt.Y("ppd:Q", title="Premium per dag (PPD)"),
