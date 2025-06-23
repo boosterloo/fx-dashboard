@@ -38,8 +38,8 @@ def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=5
 table_name = "spx_options2"
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
-expiratie = st.sidebar.selectbox("Expiratiedatum", ["2025-06-20"])  # Pas aan met beschikbare data
-strike = st.sidebar.selectbox("Strike", [200.0, 400.0, 600.0, 800.0, 1000.0])  # Pas aan met beschikbare strikes
+expiratie = st.sidebar.selectbox("Expiratiedatum", ["2025-07-01"])  # Aangepast naar je query
+strike = st.sidebar.selectbox("Strike", [6000.0])  # Aangepast naar je query
 
 df_filtered = fetch_data_in_chunks(table_name, type_optie, expiratie, strike)
 
