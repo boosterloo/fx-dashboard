@@ -34,13 +34,16 @@ df["expiration"] = pd.to_datetime(df["expiration"]).dt.date
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", df["type"].unique())
 
-# Dynamisch filteren op expiraties obv gekozen optie-type
-beschikbare_expiraties = sorted(df[df["type"] == type_optie]["expiration"].unique())
+# Eerst filteren op type, zodat expiraties en strikes rijker gevuld zijn
+df_type = df[df["type"] == type_optie]
+
+# Expiraties op basis van alleen het type
+beschikbare_expiraties = sorted(df_type["expiration"].unique())
 expiratie = st.sidebar.selectbox("Expiratiedatum", beschikbare_expiraties)
 
-# Dynamisch filteren op strikes obv gekozen optie-type en expiratie
-df_subset = df[(df["type"] == type_optie) & (df["expiration"] == expiratie)]
-beschikbare_strikes = sorted(df_subset["strike"].unique())
+# Strikes op basis van type én expiratie (dus meerdere snapshot_dates mogelijk)
+df_exp = df_type[df_type["expiration"] == expiratie]
+beschikbare_strikes = sorted(df_exp["strike"].unique())
 strike = st.sidebar.selectbox("Strike", beschikbare_strikes)
 
 # === Filteren ===
