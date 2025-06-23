@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 from supabase import create_client, Client
 import os
+from datetime import datetime
 
 # Set page config
 st.set_page_config(page_title="SPX Opties", layout="wide")
@@ -16,54 +17,39 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch data in batches
-def fetch_data_in_batches(table_name, batch_size=1000, max_rows=None):
-    offset = 0
-    all_data = []
-    while True:
-        response = supabase.table(table_name).select("*").range(offset, offset + batch_size - 1).execute()
-        if not response.data:
-            break
-        all_data.extend(response.data)
-        offset += batch_size
-        if max_rows and len(all_data) >= max_rows:
-            break
-    return pd.DataFrame(all_data)
+# Cache data fetch
+@st.cache_data(ttl=3600)  # Cache voor 1 uur
+def fetch_filtered_data(table_name, type_optie, expiratie, strike):
+    response = supabase.table(table_name).select("*").eq("type", type_optie).eq("expiration", str(expiratie)).eq("strike", strike).execute()
+    if response.data:
+        df = pd.DataFrame(response.data)
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
+        df["expiration"] = pd.to_datetime(df["expiration"], errors="coerce").dt.date
+        return df.sort_values("snapshot_date")
+    return pd.DataFrame()
 
 # Load data
 table_name = "spx_options2"
-df = fetch_data_in_batches(table_name, batch_size=500)  # Pas batch_size aan naar wens
-st.write("Totaal geladen rijen:", len(df))  # Debug: Toon totaal aantal rijen
-
-# Convert columns
-df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
-df["expiration"] = pd.to_datetime(df["expiration"], errors="coerce").dt.date
-
-# Sidebar filters
 st.sidebar.header("🔍 Filters")
-type_optie = st.sidebar.selectbox("Type optie", sorted(df["type"].dropna().unique()))
-df_type = df[df["type"] == type_optie]
+type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])  # Vooraf gedefinieerde opties
+expiratie = st.sidebar.selectbox("Expiratiedatum", ["2025-06-20"])  # Pas aan met beschikbare data
+strike = st.sidebar.selectbox("Strike", sorted([200.0, 400.0, 600.0, 800.0, 1000.0]))  # Pas aan met beschikbare strikes
 
-beschikbare_expiraties = sorted(df_type["expiration"].dropna().unique())
-expiratie = st.sidebar.selectbox("Expiratiedatum", beschikbare_expiraties)
-df_expiration = df_type[df_type["expiration"] == expiratie]
-
-beschikbare_strikes = sorted(df_expiration["strike"].dropna().unique())
-strike = st.sidebar.selectbox("Strike", beschikbare_strikes)
-
-# Filter data
-df_filtered = df_expiration[df_expiration["strike"] == strike].sort_values("snapshot_date")
+df_filtered = fetch_filtered_data(table_name, type_optie, expiratie, strike)
 st.write("Gefilterde rijen:", len(df_filtered))  # Debug: Toon aantal gefilterde rijen
-st.dataframe(df_filtered[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]])
 
-# Chart
-chart = alt.Chart(df_filtered).mark_line(point=True).encode(
-    x=alt.X("snapshot_date:T", title="Peildatum"),
-    y=alt.Y("ppd:Q", title="Premium per dag (PPD)"),
-    tooltip=["snapshot_date", "ppd", "last_price", "bid", "ask"]
-).interactive().properties(
-    title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}",
-    height=400
-)
+if not df_filtered.empty:
+    st.dataframe(df_filtered[["snapshot_date", "ppd", "last_price", "bid", "ask", "implied_volatility"]])
 
-st.altair_chart(chart, use_container_width=True)
+    # Chart
+    chart = alt.Chart(df_filtered).mark_line(point=True).encode(
+        x=alt.X("snapshot_date:T", title="Peildatum"),
+        y=alt.Y("ppd:Q", title="Premium per dag (PPD)"),
+        tooltip=["snapshot_date", "ppd", "last_price", "bid", "ask"]
+    ).interactive().properties(
+        title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}",
+        height=400
+    )
+    st.altair_chart(chart, use_container_width=True)
+else:
+    st.write("Geen data gevonden voor de geselecteerde filters.")
