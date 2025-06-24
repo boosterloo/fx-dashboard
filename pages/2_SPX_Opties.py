@@ -53,12 +53,18 @@ st.sidebar.header("🔍 Filters voor PPD per Peildatum")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
-# Dynamic strike with 6000 as default, using a slider for adjustability
+# Dynamic strike with 6000 as default, using a slider with validation
 strikes = get_unique_values("spx_options2", "strike")
-min_strike = min(strikes) if strikes else 0
-max_strike = max(strikes) if strikes else 10000
-default_strike = 6000
-strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=default_strike, step=100)
+if strikes:
+    min_strike = min(strikes) if strikes else 0
+    max_strike = max(strikes) if strikes else 10000
+    default_strike = 6000
+    if default_strike < min_strike or default_strike > max_strike:
+        default_strike = min_strike if min_strike else 0
+    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=default_strike, step=100)
+else:
+    strike = 6000  # Fallback if no strikes are found
+    st.warning("Geen strike-waarden gevonden in de database. Standaardwaarde 6000 wordt gebruikt.")
 
 # Fetch data for tab 1 with expiration filter
 df_filtered_tab1 = fetch_data_in_chunks("spx_options2", type_optie, expiratie, strike)
