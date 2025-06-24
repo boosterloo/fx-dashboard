@@ -92,14 +92,18 @@ with tab1:
         # Calculate PPD using bid and prevent division by zero
         df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
         
+        # Debug: Check for NaN or invalid values
+        st.write("Aantal rijen na filtering:", len(df_filtered_tab1))
+        invalid_ppd = df_filtered_tab1["ppd"].isna().sum()
+        st.write(f"Aantal rijen met ongeldige PPD (NaN): {invalid_ppd}")
+        
         # Move table/data info above the chart
-        st.write("Aantal peildata:", len(df_filtered_tab1))
         st.write("Gefilterde data:", df_filtered_tab1)
         
         # Chart (moved to bottom)
         chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
             x=alt.X("snapshot_date:T", title="Peildatum"),
-            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),  # Auto-scale with zero baseline
+            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
             tooltip=["snapshot_date", "ppd", "bid", "ask"]
         ).interactive().properties(
             title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}",
@@ -154,7 +158,7 @@ with tab2:
             # Chart showing development over days to maturity with auto-scaled Y-axis
             chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
                 x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
-                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),  # Auto-scale with zero baseline
+                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
                 tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
             ).interactive().properties(
                 title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike}",
