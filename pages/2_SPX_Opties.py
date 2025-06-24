@@ -22,7 +22,9 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        return sorted(list(set(row[column] for row in response.data if row[column] is not None)))
+        values = [row[column] for row in response.data if row[column] is not None]
+        st.write(f"Debug - {column} values: {values[:10]}")  # Debug output for first 10 values
+        return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) else 0)
     return []
 
 # Fetch data in chunks
@@ -55,16 +57,16 @@ expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
 # Dynamic strike with 6000 as default, using a slider with validation
 strikes = get_unique_values("spx_options2", "strike")
-if strikes:
-    min_strike = min(strikes) if strikes else 0
-    max_strike = max(strikes) if strikes else 10000
+if strikes and all(isinstance(s, (int, float)) for s in strikes):
+    min_strike = min(strikes)
+    max_strike = max(strikes)
     default_strike = 6000
     if default_strike < min_strike or default_strike > max_strike:
-        default_strike = min_strike if min_strike else 0
+        default_strike = min_strike
     strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=default_strike, step=100)
 else:
-    strike = 6000  # Fallback if no strikes are found
-    st.warning("Geen strike-waarden gevonden in de database. Standaardwaarde 6000 wordt gebruikt.")
+    strike = 6000  # Fallback if no valid strikes
+    st.warning("Geen geldige numerieke strike-waarden gevonden. Standaardwaarde 6000 wordt gebruikt.")
 
 # Fetch data for tab 1 with expiration filter
 df_filtered_tab1 = fetch_data_in_chunks("spx_options2", type_optie, expiratie, strike)
