@@ -88,7 +88,7 @@ with tab1:
     if not df_filtered_tab1.empty:
         # Calculate days to maturity
         df_filtered_tab1["days_to_maturity"] = (df_filtered_tab1["expiration"] - df_filtered_tab1["snapshot_date"]).dt.days
-        df_filtered_tab1 = df_filtered_tab1[df_filtered_tab1["days_to_maturity"] > 0]
+        df_filtered_tab1 = df_filtered_tab1[df_filtered_tab1["days_to_maturity"] > 0]  # Filter out invalid days
         # Calculate PPD using bid and prevent division by zero
         df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
         
@@ -100,11 +100,11 @@ with tab1:
         # Move table/data info above the chart
         st.write("Gefilterde data:", df_filtered_tab1)
         
-        # Chart (moved to bottom)
+        # Chart (moved to bottom, using days_to_maturity as X-axis)
         chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
-            x=alt.X("snapshot_date:T", title="Peildatum"),
+            x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity"),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-            tooltip=["snapshot_date", "ppd", "bid", "ask"]
+            tooltip=["expiration", "ppd", "bid", "ask", "days_to_maturity"]
         ).interactive().properties(
             title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}",
             height=400
