@@ -81,10 +81,10 @@ with tab1:
 with tab2:
     st.header("PPD per Days to Maturity")
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
-    snapshot_date = st.selectbox("Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
+    selected_snapshot_date = st.selectbox("Selecteer Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
     if not df_filtered.empty:
         # Filter for selected snapshot date
-        df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date, utc=True)].copy()
+        df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(selected_snapshot_date, utc=True)].copy()
         
         # Debug: Show the filtered dataframe
         st.write("Gefilterde data:", df_maturity)
