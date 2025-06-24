@@ -59,7 +59,6 @@ type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
 strikes = get_unique_values("spx_options2", "strike")
-st.write("Debug - Strikes list:", strikes)
 if strikes and all(isinstance(s, (int, float)) for s in strikes):
     min_strike = float(min(strikes))
     max_strike = float(max(strikes))
@@ -88,7 +87,6 @@ with tab1:
         st.write("Aantal rijen na filtering:", len(df_filtered_tab1))
         invalid_ppd = df_filtered_tab1["ppd"].isna().sum()
         st.write(f"Aantal rijen met ongeldige PPD (NaN): {invalid_ppd}")
-        
         st.write("Gefilterde data:", df_filtered_tab1)
         
         chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
@@ -101,7 +99,7 @@ with tab1:
         )
         st.altair_chart(chart1, use_container_width=True)
     else:
-        st.write("Geen data gevonden voor de geselecteerde filters.")
+        st.write("Geen data gevonden voor de geselecteerde filters. Controleer de filters of data in Supabase.")
 
 with tab2:
     st.header("PPD per Days to Maturity")
@@ -149,7 +147,10 @@ with tab2:
         
         if not df_maturity_filtered["ppd"].empty:
             max_ppd = df_maturity_filtered["ppd"].max()
-            best_maturity = df_maturity_filtered.loc[df_matury_filtered["ppd"].idxmax(), "days_to_maturity"]
+            best_maturity = df_maturity_filtered.loc[df_maturity_filtered["ppd"].idxmax(), "days_to_maturity"]
             st.write(f"Gunstige maturity om te schrijven/kopen: ~{best_maturity} dagen (max PPD: {max_ppd:.4f})")
     else:
         st.write("Geen data gevonden voor de geselecteerde filters.")
+
+# Move Strikes list to the bottom of the page
+st.write("Debug - Strikes list:", strikes)
