@@ -22,7 +22,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        values = [row[column] for row in response.data if row[column] is not None]
+        values = list(set(row[column] for row in response.data if row[column] is not None))  # Ensure distinct values
         st.write(f"Debug - {column} values: {values[:10]}")  # Debug output for first 10 values
         if column == "expiration":
             # Sort expiration values as datetimes
@@ -92,30 +92,38 @@ with tab1:
         # Calculate PPD using bid and prevent division by zero
         df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
         
-        # Chart
+        # Move table/data info above the chart
+        st.write("Aantal peildata:", len(df_filtered_tab1))
+        st.write("Gefilterde data:", df_filtered_tab1)
+        
+        # Chart (moved to bottom)
         chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
             x=alt.X("snapshot_date:T", title="Peildatum"),
-            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
+            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),  # Auto-scale with zero baseline
             tooltip=["snapshot_date", "ppd", "bid", "ask"]
         ).interactive().properties(
             title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}",
             height=400
         )
         st.altair_chart(chart1, use_container_width=True)
-        
-        # Move table/data info below the chart
-        st.write("Aantal peildata:", len(df_filtered_tab1))
-        st.write("Gefilterde data:", df_filtered_tab1)
     else:
         st.write("Geen data gevonden voor de geselecteerde filters.")
 
 with tab2:
     st.header("PPD per Days to Maturity")
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
-    selected_snapshot_date = st.selectbox("Selecteer Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
+    if snapshot_dates:
+        # Sort dates and select the most recent as default
+        snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
+        default_snapshot = snapshot_dates_sorted[0]  # Most recent date
+        selected_snapshot_date = st.selectbox("Selecteer Peildatum", snapshot_dates_sorted, index=0, key="snapshot_date_tab2")
+    else:
+        selected_snapshot_date = None
+        st.write("Geen peildata beschikbaar.")
+    
     # Add adjustable Days to Maturity filter with default 30
     days_to_maturity_filter = st.slider("Dagen tot Maturity", min_value=1, max_value=100, value=30, step=1)
-    if not df_filtered_tab2.empty:
+    if not df_filtered_tab2.empty and selected_snapshot_date:
         # Filter for selected snapshot date
         df_maturity = df_filtered_tab2[df_filtered_tab2["snapshot_date"] == pd.to_datetime(selected_snapshot_date, utc=True)].copy()
         
@@ -146,7 +154,7 @@ with tab2:
             # Chart showing development over days to maturity with auto-scaled Y-axis
             chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
                 x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
-                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
+                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),  # Auto-scale with zero baseline
                 tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
             ).interactive().properties(
                 title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike}",
