@@ -62,15 +62,16 @@ expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
 # Dynamic strike with 6000 as default, using a slider with validation
 strikes = get_unique_values("spx_options2", "strike")
+st.write("Debug - Strikes list:", strikes)  # Extra debug to inspect strikes
 if strikes and all(isinstance(s, (int, float)) for s in strikes):
-    min_strike = min(strikes)
-    max_strike = max(strikes)
-    default_strike = 6000
+    min_strike = float(min(strikes))  # Ensure float conversion
+    max_strike = float(max(strikes))  # Ensure float conversion
+    default_strike = 6000.0  # Match float type
     if default_strike < min_strike or default_strike > max_strike:
         default_strike = min_strike
-    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=default_strike, step=100)
+    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=default_strike, step=100.0)
 else:
-    strike = 6000  # Fallback if no valid strikes
+    strike = 6000.0  # Fallback as float
     st.warning("Geen geldige numerieke strike-waarden gevonden. Standaardwaarde 6000 wordt gebruikt.")
 
 # Fetch data for tab 1 with expiration filter
