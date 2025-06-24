@@ -24,7 +24,12 @@ def get_unique_values(table_name, column):
     if response.data:
         values = [row[column] for row in response.data if row[column] is not None]
         st.write(f"Debug - {column} values: {values[:10]}")  # Debug output for first 10 values
-        return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) else 0)
+        if column == "expiration":
+            # Sort expiration values as datetimes
+            return sorted(values, key=lambda x: pd.to_datetime(x))
+        else:
+            # Sort other columns (e.g., strike) as floats
+            return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else 0)
     return []
 
 # Fetch data in chunks
