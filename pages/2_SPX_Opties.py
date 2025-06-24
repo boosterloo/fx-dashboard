@@ -27,7 +27,7 @@ def get_unique_values(table_name, column):
 
 # Fetch data in chunks
 @st.cache_data(ttl=3600)
-def fetch_data_in_chunks(table_name, type_optie, expiratie=None, strike=None, batch_size=500):
+def fetch_data_in_chunks(table_name, type_optie, expiratie=None, strike=None, batch_size=1000):
     offset = 0
     all_data = []
     query = supabase.table(table_name).select("*").eq("type", type_optie)
@@ -53,13 +53,12 @@ st.sidebar.header("🔍 Filters voor PPD per Peildatum")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
-# Dynamic strike with 30 as default
+# Dynamic strike with 6000 as default, using a slider for adjustability
 strikes = get_unique_values("spx_options2", "strike")
+min_strike = min(strikes) if strikes else 0
+max_strike = max(strikes) if strikes else 10000
 default_strike = 6000
-if default_strike in strikes:
-    strike = st.sidebar.selectbox("Strike", strikes, index=strikes.index(default_strike))
-else:
-    strike = st.sidebar.selectbox("Strike", strikes, index=0)
+strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=default_strike, step=100)
 
 # Fetch data for tab 1 with expiration filter
 df_filtered_tab1 = fetch_data_in_chunks("spx_options2", type_optie, expiratie, strike)
@@ -78,7 +77,8 @@ with tab1:
         df_filtered_tab1 = df_filtered_tab1[df_filtered_tab1["days_to_maturity"] > 0]
         # Calculate PPD using bid and prevent division by zero
         df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
-        st.write("Aantal peildata:", len(df_filtered_tab1))
+        
+        # Chart
         chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
             x=alt.X("snapshot_date:T", title="Peildatum"),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
@@ -88,6 +88,10 @@ with tab1:
             height=400
         )
         st.altair_chart(chart1, use_container_width=True)
+        
+        # Move table/data info below the chart
+        st.write("Aantal peildata:", len(df_filtered_tab1))
+        st.write("Gefilterde data:", df_filtered_tab1)
     else:
         st.write("Geen data gevonden voor de geselecteerde filters.")
 
@@ -128,7 +132,7 @@ with tab2:
             # Chart showing development over days to maturity with auto-scaled Y-axis
             chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
                 x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
-                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),  # Auto-scaled by default
+                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
                 tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
             ).interactive().properties(
                 title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike}",
