@@ -38,8 +38,8 @@ def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=5
         offset += batch_size
     if all_data:
         df = pd.DataFrame(all_data)
-        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], errors="coerce")
-        df["expiration"] = pd.to_datetime(df["expiration"], errors="coerce")
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+        df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
         return df.sort_values("snapshot_date")
     return pd.DataFrame()
 
@@ -48,8 +48,13 @@ st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
+# Dynamic strike with 6000 as default
 strikes = get_unique_values("spx_options2", "strike")
-strike = st.sidebar.selectbox("Strike", strikes)
+default_strike = 6000
+if default_strike in strikes:
+    strike = st.sidebar.selectbox("Strike", strikes, index=strikes.index(default_strike))
+else:
+    strike = st.sidebar.selectbox("Strike", strikes, index=0)
 
 # Fetch data
 df_filtered = fetch_data_in_chunks("spx_options2", type_optie, expiratie, strike)
@@ -79,7 +84,7 @@ with tab2:
     snapshot_date = st.selectbox("Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
     if not df_filtered.empty:
         # Filter for selected snapshot date and ensure datetime compatibility
-        df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date)].copy()
+        df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date, utc=True)].copy()
         
         # Debug: Show the filtered dataframe
         st.write("Gefilterde data:", df_maturity)
@@ -88,12 +93,13 @@ with tab2:
         if df_maturity["expiration"].isna().any() or df_maturity["snapshot_date"].isna().any():
             st.write("Waarschuwing: Sommige datums zijn ongeldig. Controleer de data.")
         else:
-            # Ensure both columns are in datetime format
-            df_maturity["expiration"] = pd.to_datetime(df_maturity["expiration"])
-            df_maturity["snapshot_date"] = pd.to_datetime(df_maturity["snapshot_date"])
+            # Ensure both columns are in datetime format with UTC
+            df_maturity["expiration"] = pd.to_datetime(df_maturity["expiration"], utc=True)
+            df_maturity["snapshot_date"] = pd.to_datetime(df_maturity["snapshot_date"], utc=True)
             
-            # Calculate days to maturity
-            df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
+            # Calculate days to maturity with fallback for invalid results
+            time_diff = df_maturity["expiration"] - df_maturity["snapshot_date"]
+            df_maturity["days_to_maturity"] = time_diff.dt.days.fillna(0).astype(int)
             # Filter out invalid or negative days
             df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
             df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"]
