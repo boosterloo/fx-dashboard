@@ -53,7 +53,7 @@ st.sidebar.header("🔍 Filters voor PPD per Peildatum")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
-# Dynamic strike with 6000 as default
+# Dynamic strike with 30 as default
 strikes = get_unique_values("spx_options2", "strike")
 default_strike = 6000
 if default_strike in strikes:
@@ -73,15 +73,16 @@ tab1, tab2 = st.tabs(["PPD per Peildatum", "PPD per Days to Maturity"])
 with tab1:
     st.header("PPD per Peildatum")
     if not df_filtered_tab1.empty:
-        # Calculate PPD for tab 1
+        # Calculate days to maturity
         df_filtered_tab1["days_to_maturity"] = (df_filtered_tab1["expiration"] - df_filtered_tab1["snapshot_date"]).dt.days
         df_filtered_tab1 = df_filtered_tab1[df_filtered_tab1["days_to_maturity"] > 0]
-        df_filtered_tab1["ppd"] = df_filtered_tab1["last_price"] / df_filtered_tab1["days_to_maturity"]
+        # Calculate PPD using bid and prevent division by zero
+        df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
         st.write("Aantal peildata:", len(df_filtered_tab1))
         chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
             x=alt.X("snapshot_date:T", title="Peildatum"),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
-            tooltip=["snapshot_date", "ppd", "last_price", "bid", "ask"]
+            tooltip=["snapshot_date", "ppd", "bid", "ask"]
         ).interactive().properties(
             title=f"PPD-verloop — {type_optie.upper()} {strike} exp. {expiratie}",
             height=400
@@ -94,6 +95,8 @@ with tab2:
     st.header("PPD per Days to Maturity")
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
     selected_snapshot_date = st.selectbox("Selecteer Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
+    # Add adjustable Days to Maturity filter with default 30
+    days_to_maturity_filter = st.slider("Dagen tot Maturity", min_value=1, max_value=100, value=30, step=1)
     if not df_filtered_tab2.empty:
         # Filter for selected snapshot date
         df_maturity = df_filtered_tab2[df_filtered_tab2["snapshot_date"] == pd.to_datetime(selected_snapshot_date, utc=True)].copy()
@@ -111,16 +114,21 @@ with tab2:
             
             # Calculate days to maturity for all expirations
             df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
-            # Filter out invalid or negative days
-            df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
-            # Calculate correct PPD as optiepremie / days_to_maturity
-            df_maturity["ppd"] = df_maturity["last_price"] / df_maturity["days_to_maturity"]
+            # Filter out invalid or negative days and apply Days to Maturity filter with tolerance
+            tolerance = 5
+            df_maturity = df_maturity[
+                (df_maturity["days_to_maturity"] > 0) &
+                (df_maturity["days_to_maturity"] >= days_to_maturity_filter - tolerance) &
+                (df_maturity["days_to_maturity"] <= days_to_maturity_filter + tolerance)
+            ]
+            # Calculate PPD using bid and prevent division by zero
+            df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
 
             st.write("Aantal peildata na filtering:", len(df_maturity))
-            # Chart showing development over days to maturity with PPD on Y-axis
+            # Chart showing development over days to maturity with auto-scaled Y-axis
             chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
-                x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),  # Show all maturities
-                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
+                x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
+                y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),  # Auto-scaled by default
                 tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
             ).interactive().properties(
                 title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike}",
