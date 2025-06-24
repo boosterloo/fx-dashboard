@@ -78,10 +78,10 @@ with tab2:
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
     snapshot_date = st.selectbox("Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
     if not df_filtered.empty:
-        # Filter for selected snapshot date
-        df_maturity = df_filtered[df_filtered["snapshot_date"] == snapshot_date].copy()
+        # Filter for selected snapshot date and convert snapshot_date to datetime
+        df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date)].copy()
         # Calculate days to maturity
-        df_maturity["days_to_maturity"] = (df_maturity["expiration"] - pd.to_datetime(snapshot_date)).dt.days
+        df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
         df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"].replace(0, 1)  # Avoid division by zero
 
         st.write("Aantal peildata:", len(df_maturity))
