@@ -27,11 +27,16 @@ def get_unique_values(table_name, column):
 
 # Fetch data in chunks
 @st.cache_data(ttl=3600)
-def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=500):
+def fetch_data_in_chunks(table_name, type_optie, expiratie=None, strike=None, batch_size=500):
     offset = 0
     all_data = []
+    query = supabase.table(table_name).select("*").eq("type", type_optie)
+    if expiratie:
+        query = query.eq("expiration", str(expiratie))
+    if strike:
+        query = query.eq("strike", strike)
     while True:
-        response = supabase.table(table_name).select("*").eq("type", type_optie).eq("expiration", str(expiratie)).eq("strike", strike).range(offset, offset + batch_size - 1).execute()
+        response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
             break
         all_data.extend(response.data)
@@ -43,8 +48,8 @@ def fetch_data_in_chunks(table_name, type_optie, expiratie, strike, batch_size=5
         return df.sort_values("snapshot_date")
     return pd.DataFrame()
 
-# Sidebar filters (shared)
-st.sidebar.header("🔍 Filters")
+# Sidebar filters (for tab 1)
+st.sidebar.header("🔍 Filters voor PPD per Peildatum")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"])
 expiraties = get_unique_values("spx_options2", "expiration")
 expiratie = st.sidebar.selectbox("Expiratiedatum", expiraties)
@@ -56,17 +61,20 @@ if default_strike in strikes:
 else:
     strike = st.sidebar.selectbox("Strike", strikes, index=0)
 
-# Fetch data
-df_filtered = fetch_data_in_chunks("spx_options2", type_optie, expiratie, strike)
+# Fetch data for tab 1 with expiration filter
+df_filtered_tab1 = fetch_data_in_chunks("spx_options2", type_optie, expiratie, strike)
+
+# Fetch data for tab 2 without expiration filter
+df_filtered_tab2 = fetch_data_in_chunks("spx_options2", type_optie, None, strike)
 
 # Tabs for different views
 tab1, tab2 = st.tabs(["PPD per Peildatum", "PPD per Days to Maturity"])
 
 with tab1:
     st.header("PPD per Peildatum")
-    if not df_filtered.empty:
-        st.write("Aantal peildata:", len(df_filtered))
-        chart1 = alt.Chart(df_filtered).mark_line(point=True).encode(
+    if not df_filtered_tab1.empty:
+        st.write("Aantal peildata:", len(df_filtered_tab1))
+        chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
             x=alt.X("snapshot_date:T", title="Peildatum"),
             y=alt.Y("ppd:Q", title="Premium per dag (PPD)"),
             tooltip=["snapshot_date", "ppd", "last_price", "bid", "ask"]
@@ -82,9 +90,9 @@ with tab2:
     st.header("PPD per Days to Maturity")
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
     selected_snapshot_date = st.selectbox("Selecteer Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
-    if not df_filtered.empty:
+    if not df_filtered_tab2.empty:
         # Filter for selected snapshot date
-        df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(selected_snapshot_date, utc=True)].copy()
+        df_maturity = df_filtered_tab2[df_filtered_tab2["snapshot_date"] == pd.to_datetime(selected_snapshot_date, utc=True)].copy()
         
         # Debug: Show the filtered dataframe
         st.write("Gefilterde data:", df_maturity)
@@ -111,7 +119,7 @@ with tab2:
                 y=alt.Y("ppd_per_day_to_maturity:Q", title="PPD per Dag tot Maturity"),
                 tooltip=["expiration", "days_to_maturity", "ppd_per_day_to_maturity", "strike"]
             ).interactive().properties(
-                title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike} exp. {expiratie}",
+                title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike}",
                 height=400
             )
             st.altair_chart(chart2, use_container_width=True)
