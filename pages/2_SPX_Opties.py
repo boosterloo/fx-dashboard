@@ -83,7 +83,7 @@ with tab2:
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
     snapshot_date = st.selectbox("Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
     if not df_filtered.empty:
-        # Filter for selected snapshot date and ensure datetime compatibility
+        # Filter for selected snapshot date
         df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date, utc=True)].copy()
         
         # Debug: Show the filtered dataframe
@@ -97,18 +97,19 @@ with tab2:
             df_maturity["expiration"] = pd.to_datetime(df_maturity["expiration"], utc=True)
             df_maturity["snapshot_date"] = pd.to_datetime(df_maturity["snapshot_date"], utc=True)
             
-            # Calculate days to maturity with fallback for invalid results
-            time_diff = df_maturity["expiration"] - df_maturity["snapshot_date"]
-            df_maturity["days_to_maturity"] = time_diff.dt.days.fillna(0).astype(int)
+            # Calculate days to maturity for all expirations
+            df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
             # Filter out invalid or negative days
             df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
+            # Calculate PPD per day to maturity
             df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"]
 
             st.write("Aantal peildata na filtering:", len(df_maturity))
+            # Chart showing development over days to maturity
             chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
-                x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity"),
+                x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),  # Show all maturities
                 y=alt.Y("ppd_per_day_to_maturity:Q", title="PPD per Dag tot Maturity"),
-                tooltip=["snapshot_date", "days_to_maturity", "ppd_per_day_to_maturity", "strike"]
+                tooltip=["expiration", "days_to_maturity", "ppd_per_day_to_maturity", "strike"]
             ).interactive().properties(
                 title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike} exp. {expiratie}",
                 height=400
