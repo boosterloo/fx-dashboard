@@ -28,8 +28,8 @@ def get_unique_values(table_name, column):
             # Sort expiration values as datetimes
             return sorted(values, key=lambda x: pd.to_datetime(x))
         else:
-            # Sort other columns (e.g., strike) as floats
-            return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else 0)
+            # Sort other columns (e.g., strike) as floats, handle strings safely
+            return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and (isinstance(x, str) and x.replace('.', '').replace('-', '').isdigit() or isinstance(x, (int, float))) else 0)
     return []
 
 # Fetch data in chunks
