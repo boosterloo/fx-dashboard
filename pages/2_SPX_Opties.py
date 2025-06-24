@@ -78,26 +78,33 @@ with tab2:
     snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
     snapshot_date = st.selectbox("Peildatum", sorted(snapshot_dates), key="snapshot_date_tab2")
     if not df_filtered.empty:
-        # Filter for selected snapshot date and convert snapshot_date to datetime
+        # Filter for selected snapshot date and ensure datetime compatibility
         df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date)].copy()
-        # Calculate days to maturity
-        df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
-        df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"].replace(0, 1)  # Avoid division by zero
+        
+        # Check for valid datetime values
+        if df_maturity["expiration"].isna().any() or df_maturity["snapshot_date"].isna().any():
+            st.write("Waarschuwing: Sommige datums zijn ongeldig. Controleer de data.")
+        else:
+            # Calculate days to maturity
+            df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
+            # Avoid negative or zero days to maturity
+            df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
+            df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"]  # No division by zero needed now
 
-        st.write("Aantal peildata:", len(df_maturity))
-        chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
-            x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity"),
-            y=alt.Y("ppd_per_day_to_maturity:Q", title="PPD per Dag tot Maturity"),
-            tooltip=["snapshot_date", "days_to_maturity", "ppd_per_day_to_maturity", "strike"]
-        ).interactive().properties(
-            title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike} exp. {expiratie}",
-            height=400
-        )
-        st.altair_chart(chart2, use_container_width=True)
-        # Suggestie voor gunstige maturity
-        if not df_maturity["ppd_per_day_to_maturity"].empty:
-            max_ppd_per_day = df_maturity["ppd_per_day_to_maturity"].max()
-            best_maturity = df_maturity.loc[df_maturity["ppd_per_day_to_maturity"].idxmax(), "days_to_maturity"]
-            st.write(f"Gunstige maturity om te schrijven/kopen: ~{best_maturity} dagen (max PPD per dag: {max_ppd_per_day:.4f})")
+            st.write("Aantal peildata:", len(df_maturity))
+            chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
+                x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity"),
+                y=alt.Y("ppd_per_day_to_maturity:Q", title="PPD per Dag tot Maturity"),
+                tooltip=["snapshot_date", "days_to_maturity", "ppd_per_day_to_maturity", "strike"]
+            ).interactive().properties(
+                title=f"PPD per Dag tot Maturity — {type_optie.upper()} {strike} exp. {expiratie}",
+                height=400
+            )
+            st.altair_chart(chart2, use_container_width=True)
+            # Suggestie voor gunstige maturity
+            if not df_maturity["ppd_per_day_to_maturity"].empty:
+                max_ppd_per_day = df_maturity["ppd_per_day_to_maturity"].max()
+                best_maturity = df_maturity.loc[df_maturity["ppd_per_day_to_maturity"].idxmax(), "days_to_maturity"]
+                st.write(f"Gunstige maturity om te schrijven/kopen: ~{best_maturity} dagen (max PPD per dag: {max_ppd_per_day:.4f})")
     else:
         st.write("Geen data gevonden voor de geselecteerde filters.")
