@@ -81,17 +81,24 @@ with tab2:
         # Filter for selected snapshot date and ensure datetime compatibility
         df_maturity = df_filtered[df_filtered["snapshot_date"] == pd.to_datetime(snapshot_date)].copy()
         
+        # Debug: Show the filtered dataframe
+        st.write("Gefilterde data:", df_maturity)
+
         # Check for valid datetime values
         if df_maturity["expiration"].isna().any() or df_maturity["snapshot_date"].isna().any():
             st.write("Waarschuwing: Sommige datums zijn ongeldig. Controleer de data.")
         else:
+            # Ensure both columns are in datetime format
+            df_maturity["expiration"] = pd.to_datetime(df_maturity["expiration"])
+            df_maturity["snapshot_date"] = pd.to_datetime(df_maturity["snapshot_date"])
+            
             # Calculate days to maturity
             df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
-            # Avoid negative or zero days to maturity
+            # Filter out invalid or negative days
             df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
-            df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"]  # No division by zero needed now
+            df_maturity["ppd_per_day_to_maturity"] = df_maturity["ppd"] / df_maturity["days_to_maturity"]
 
-            st.write("Aantal peildata:", len(df_maturity))
+            st.write("Aantal peildata na filtering:", len(df_maturity))
             chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
                 x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity"),
                 y=alt.Y("ppd_per_day_to_maturity:Q", title="PPD per Dag tot Maturity"),
