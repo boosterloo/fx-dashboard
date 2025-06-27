@@ -21,11 +21,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        values = list(set([row[column] for row in response.data if row[column] is not None]))  # Local distinct
+        values = [pd.to_datetime(row[column]).date() for row in response.data if row[column] is not None]  # Standardize to date
+        values = list(set(values))  # Ensure unique
         st.write(f"Debug - {column} raw unique values: {values[:10]}")
         try:
             if column == "expiration" or column == "snapshot_date":
-                return sorted(values, key=lambda x: pd.to_datetime(x).date())
+                return sorted(values, key=lambda x: pd.to_datetime(x))
             elif column == "strike":
                 valid_strikes = [int(float(x)) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
                 return sorted(list(set(valid_strikes))) if valid_strikes else [0]
@@ -45,7 +46,8 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     if type_optie:
         query = query.eq("type", type_optie)
     if snapshot_dates and len(snapshot_dates) > 0:
-        query = query.in_("snapshot_date", [str(pd.to_datetime(s).date()) for s in snapshot_dates])
+        # Match based on date part of timestamp
+        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])  # Use date strings directly
     if strike is not None:
         query = query.eq("strike", int(strike))
     while True:
@@ -76,7 +78,6 @@ else:
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    # Filter out strikes with no data (optional: add a check for valid data)
     strike = st.sidebar.selectbox("Selecteer Strike", [s for s in strikes if s is not None and s > 0], index=[s for s in strikes if s is not None and s > 0].index(5500) if 5500 in [s for s in strikes if s is not None and s > 0] else 0)
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
