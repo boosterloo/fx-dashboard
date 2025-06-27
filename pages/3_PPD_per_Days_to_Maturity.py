@@ -96,16 +96,31 @@ if not df_all_data.empty:
     df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]  # Only filter out invalid days
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
     
-    # Chart (top) with increased Y-axis space
-    chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
+    # Main chart (full range) with increased Y-axis space
+    chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
         tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
-        title=f"PPD per Dag tot Maturity — {selected_snapshot_date} | {type_optie.upper()} | Strike {strike}",
-        height=600  # Increased height for more Y-axis space
+        title=f"PPD per Dag tot Maturity (Overzicht) — {selected_snapshot_date} | {type_optie.upper()} | Strike {strike}",
+        height=700  # Further increased height for more Y-axis space
     )
-    st.altair_chart(chart2, use_container_width=True)
+    st.altair_chart(chart2_main, use_container_width=True)
+    
+    # Second chart for first 21 days
+    df_short_term = df_maturity[df_maturity["days_to_maturity"] <= 21]
+    if not df_short_term.empty:
+        chart2_short = alt.Chart(df_short_term).mark_line(point=True).encode(
+            x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity (0-21)", sort=None),
+            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
+            tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
+        ).interactive().properties(
+            title="PPD per Dag tot Maturity (0-21 dagen)",
+            height=400
+        )
+        st.altair_chart(chart2_short, use_container_width=True)
+    else:
+        st.write("Geen data beschikbaar voor de eerste 21 dagen.")
     
     # Tables and debug info (bottom)
     initial_rows = len(df_maturity)
