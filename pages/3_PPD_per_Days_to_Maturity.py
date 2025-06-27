@@ -21,17 +21,25 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        values = [pd.to_datetime(row[column]).date() for row in response.data if row[column] is not None]  # Standardize to date
-        values = list(set(values))  # Ensure unique
-        st.write(f"Debug - {column} raw unique values: {values[:10]}")
+        values = [row[column] for row in response.data if row[column] is not None]
+        st.write(f"Debug - {column} raw values: {values[:10]}")
         try:
             if column == "expiration" or column == "snapshot_date":
-                return sorted(values, key=lambda x: pd.to_datetime(x))
+                values = [pd.to_datetime(v).date() for v in values]
+                return sorted(list(set(values)), key=lambda x: pd.to_datetime(x))
             elif column == "strike":
-                valid_strikes = [int(float(x)) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
+                # Filter and convert strikes to integers, handle invalid values
+                valid_strikes = []
+                for v in values:
+                    try:
+                        num_value = float(v)
+                        if num_value > 0:  # Exclude invalid or negative strikes
+                            valid_strikes.append(int(num_value))
+                    except (ValueError, TypeError):
+                        continue
                 return sorted(list(set(valid_strikes))) if valid_strikes else [0]
             else:
-                return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
+                return sorted(list(set(values)), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
             st.write(f"Debug - Error processing {column} values: {e}")
             return values
@@ -46,10 +54,9 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     if type_optie:
         query = query.eq("type", type_optie)
     if snapshot_dates and len(snapshot_dates) > 0:
-        # Match based on date part of timestamp
-        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])  # Use date strings directly
-    if strike is not None:
-        query = query.eq("strike", int(strike))
+        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
+    if strike is not None and strike != 0:  # Only apply strike filter if valid
+        query = query.eq("strike", strike)
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -62,6 +69,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
         st.write("Debug - Unique snapshot_dates in fetched data:", sorted(df["snapshot_date"].unique()))
+        st.write("Debug - Unique strikes in fetched data:", sorted(df["strike"].unique()))  # Added for debug
         return df.sort_values("snapshot_date")
     st.write("Debug - No data fetched. Check filters or Supabase connection.")
     return pd.DataFrame()
@@ -78,7 +86,7 @@ else:
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    strike = st.sidebar.selectbox("Selecteer Strike", [s for s in strikes if s is not None and s > 0], index=[s for s in strikes if s is not None and s > 0].index(5500) if 5500 in [s for s in strikes if s is not None and s > 0] else 0)
+    strike = st.sidebar.selectbox("Selecteer Strike", strikes, index=strikes.index(5500) if 5500 in strikes else 0)
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
