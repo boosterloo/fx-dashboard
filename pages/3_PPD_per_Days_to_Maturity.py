@@ -55,10 +55,13 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     st.write(f"Debug - Applied filters: type_optie={type_optie}, snapshot_dates={snapshot_dates}, strike={strike}")
     if type_optie:
         query = query.eq("type", type_optie)
+        st.write(f"Debug - Filtering by type: {type_optie}")
     if snapshot_dates and len(snapshot_dates) > 0:
         query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
+        st.write(f"Debug - Filtering by snapshot_dates: {[str(s) for s in snapshot_dates]}")
     if strike is not None and strike != 0:
         query = query.eq("strike", strike)
+        st.write(f"Debug - Filtering by strike: {strike}")
     # Test query without filters
     test_response = supabase.table(table_name).select("*").limit(1).execute()
     st.write(f"Debug - Test query result (first row): {test_response.data}")
@@ -81,7 +84,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
-type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=1)  # Default to "put"
+type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=0)  # Default to "call" to match test data
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
@@ -91,7 +94,7 @@ else:
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    default_strike = strikes[0] if strikes else 5500  # Use first available strike as default
+    default_strike = strikes[0] if strikes else 5500
     strike = st.sidebar.selectbox("Selecteer Strike", strikes, index=strikes.index(default_strike))
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
@@ -112,7 +115,7 @@ if not df_all_data.empty:
     # Group by snapshot_date and days_to_maturity to ensure unique lines
     df_maturity = df_maturity.groupby(["snapshot_date", "days_to_maturity"]).agg({"ppd": "mean", "strike": "first", "bid": "first", "expiration": "first"}).reset_index()
     st.write("Debug - Processed df_maturity shape:", df_maturity.shape)
-    st.write("Debug - Unique snapshot_dates in df_maturity:", sorted(df_maturity["snapshot_date"].unique()))
+    st.write("Debug - Unique snapshot_dates in df_maturity:", sorted(df_maturity["snapshot_date"].unique"))
     
     # Main chart (full range) with increased Y-axis space and colored lines
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
