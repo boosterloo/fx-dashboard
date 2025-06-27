@@ -19,9 +19,9 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Fetch unique values for filters with error handling
 @st.cache_data(ttl=3600)
 def get_unique_values(table_name, column):
-    response = supabase.table(table_name).select(column, distinct=True).execute()  # Use distinct
+    response = supabase.table(table_name).select(column).execute()  # Fetch all data first
     if response.data:
-        values = [row[column] for row in response.data if row[column] is not None]
+        values = list(set([row[column] for row in response.data if row[column] is not None]))  # Local distinct
         st.write(f"Debug - {column} raw unique values: {values[:10]}")
         try:
             if column == "expiration" or column == "snapshot_date":
