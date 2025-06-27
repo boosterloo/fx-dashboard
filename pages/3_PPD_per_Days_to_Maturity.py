@@ -19,7 +19,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Fetch unique values for filters with error handling
 @st.cache_data(ttl=3600)
 def get_unique_values(table_name, column):
-    response = supabase.table(table_name).select(column).execute()  # Fetch all data first
+    response = supabase.table(table_name).select(column).execute()
     if response.data:
         values = list(set([row[column] for row in response.data if row[column] is not None]))  # Local distinct
         st.write(f"Debug - {column} raw unique values: {values[:10]}")
@@ -76,7 +76,8 @@ else:
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    strike = st.sidebar.selectbox("Selecteer Strike", strikes, index=strikes.index(5500) if 5500 in strikes else 0)  # Default to 5500 if available
+    # Filter out strikes with no data (optional: add a check for valid data)
+    strike = st.sidebar.selectbox("Selecteer Strike", [s for s in strikes if s is not None and s > 0], index=[s for s in strikes if s is not None and s > 0].index(5500) if 5500 in [s for s in strikes if s is not None and s > 0] else 0)
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
