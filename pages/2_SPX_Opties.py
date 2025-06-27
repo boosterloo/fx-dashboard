@@ -57,11 +57,7 @@ if not df_all_data.empty:
     df_filtered_tab1 = df_filtered_tab1[df_filtered_tab1["days_to_maturity"] > 0]
     df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
     
-    st.write("Aantal rijen na filtering:", len(df_filtered_tab1))
-    invalid_ppd = df_filtered_tab1["ppd"].isna().sum()
-    st.write(f"Aantal rijen met ongeldige PPD (NaN): {invalid_ppd}")
-    st.write("Gefilterde data:", df_filtered_tab1)
-    
+    # Chart (top)
     chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
         x=alt.X("snapshot_date:T", title="Peildatum"),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
@@ -71,6 +67,12 @@ if not df_all_data.empty:
         height=400
     )
     st.altair_chart(chart1, use_container_width=True)
+    
+    # Tables and debug info (bottom)
+    st.write("Aantal rijen na filtering:", len(df_filtered_tab1))
+    invalid_ppd = df_filtered_tab1["ppd"].isna().sum()
+    st.write(f"Aantal rijen met ongeldige PPD (NaN): {invalid_ppd}")
+    st.write("Gefilterde data:", df_filtered_tab1)
 else:
     st.write("Geen data gevonden in Supabase.")
 
