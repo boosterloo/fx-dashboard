@@ -4,7 +4,7 @@ from streamlit_extras.switch_page_button import switch_page
 st.set_page_config(page_title="Eastwood Dashboard", layout="wide")
 
 st.markdown("""
-# 📊 Welkom bij het Eastwood Dashboard
+# 📊 Market & Macro Dashboard
 
 Welkom! Gebruik de navigatie links of onderstaande knoppen om een dashboard te openen:
 """)
