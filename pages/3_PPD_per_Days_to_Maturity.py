@@ -27,9 +27,9 @@ def get_unique_values(table_name, column):
             if column == "expiration" or column == "snapshot_date":
                 return sorted(values, key=lambda x: pd.to_datetime(x))
             elif column == "strike":
-                # Safe conversion to float, filter out invalid values
-                valid_strikes = [float(x) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
-                return sorted(valid_strikes) if valid_strikes else [0.0]  # Default to [0.0] if no valid strikes
+                # Safe conversion to float, filter out invalid values, round to integer
+                valid_strikes = [int(float(x)) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
+                return sorted(list(set(valid_strikes))) if valid_strikes else [0]  # Unique integers
             else:
                 return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
@@ -48,7 +48,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=
     if snapshot_date:
         query = query.eq("snapshot_date", str(snapshot_date))
     if strike is not None:
-        query = query.eq("strike", float(strike))  # Ensure strike is float
+        query = query.eq("strike", int(strike))  # Use integer for strike
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -66,7 +66,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
-type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"])
+type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=1)  # Default to "put"
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
@@ -79,11 +79,11 @@ strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
     min_strike = min(strikes)
     max_strike = max(strikes)
-    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=min_strike, step=100.0)
+    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=5500, step=1)  # Default 5500, integer step
     st.sidebar.write(f"Debug - Selected strike: {strike}")  # Debug to confirm filter
 else:
-    strike = 6000.0  # Default if no valid strikes
-    st.sidebar.write("Debug - No valid strikes found, using default: 6000.0")
+    strike = 5500  # Default if no valid strikes
+    st.sidebar.write("Debug - No valid strikes found, using default: 5500")
 
 # Fetch data with filters
 df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_date, strike)
@@ -96,14 +96,14 @@ if not df_all_data.empty:
     df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]  # Only filter out invalid days
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
     
-    # Chart (top)
+    # Chart (top) with increased Y-axis space
     chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
         tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity — {selected_snapshot_date} | {type_optie.upper()} | Strike {strike}",
-        height=400
+        height=600  # Increased height for more Y-axis space
     )
     st.altair_chart(chart2, use_container_width=True)
     
