@@ -28,7 +28,6 @@ def get_unique_values(table_name, column):
                 values = [pd.to_datetime(v).date() for v in raw_values]
                 return sorted(list(set(values)), key=lambda x: pd.to_datetime(x))
             elif column == "strike":
-                # Debug raw strike values and filter invalid ones
                 st.write(f"Debug - {column} raw values: {raw_values[:10]}")
                 valid_strikes = []
                 for v in raw_values:
@@ -39,7 +38,7 @@ def get_unique_values(table_name, column):
                     except (ValueError, TypeError):
                         st.write(f"Debug - Invalid strike value skipped: {v}")
                         continue
-                return sorted(list(set(valid_strikes))) if valid_strikes else [5500]  # Default to 5500 if no valid strikes
+                return sorted(list(set(valid_strikes))) if valid_strikes else [5500]
             else:
                 return sorted(list(set(raw_values)), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
@@ -58,7 +57,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
         query = query.eq("type", type_optie)
     if snapshot_dates and len(snapshot_dates) > 0:
         query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
-    if strike is not None and strike != 0:  # Only apply strike filter if valid
+    if strike is not None and strike != 0:
         query = query.eq("strike", strike)
     # Test query without filters
     test_response = supabase.table(table_name).select("*").limit(1).execute()
@@ -86,13 +85,14 @@ type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], inde
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
-    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=[snapshot_dates_sorted[0]])
+    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=snapshot_dates_sorted[0] if snapshot_dates_sorted else [])
 else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    strike = st.sidebar.selectbox("Selecteer Strike", strikes, index=strikes.index(5500) if 5500 in strikes else 0)
+    default_strike = strikes[0] if strikes else 5500  # Use first available strike as default
+    strike = st.sidebar.selectbox("Selecteer Strike", strikes, index=strikes.index(default_strike))
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
