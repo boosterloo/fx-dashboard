@@ -115,7 +115,7 @@ if not df_all_data.empty:
     # Group by snapshot_date and days_to_maturity to ensure unique lines
     df_maturity = df_maturity.groupby(["snapshot_date", "days_to_maturity"]).agg({"ppd": "mean", "strike": "first", "bid": "first", "expiration": "first"}).reset_index()
     st.write("Debug - Processed df_maturity shape:", df_maturity.shape)
-    st.write("Debug - Unique snapshot_dates in df_maturity:", sorted(df_maturity["snapshot_date"].unique"))
+    st.write("Debug - Unique snapshot_dates in df_maturity:", sorted(df_maturity["snapshot_date"].unique()))
     
     # Main chart (full range) with increased Y-axis space and colored lines
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
