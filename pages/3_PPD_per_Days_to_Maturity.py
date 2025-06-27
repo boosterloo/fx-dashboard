@@ -21,28 +21,30 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        values = [row[column] for row in response.data if row[column] is not None]
-        st.write(f"Debug - {column} raw values: {values[:10]}")
+        raw_values = [row[column] for row in response.data if row[column] is not None]
+        st.write(f"Debug - {column} raw values before processing: {raw_values[:10]}")
         try:
             if column == "expiration" or column == "snapshot_date":
-                values = [pd.to_datetime(v).date() for v in values]
+                values = [pd.to_datetime(v).date() for v in raw_values]
                 return sorted(list(set(values)), key=lambda x: pd.to_datetime(x))
             elif column == "strike":
-                # Filter and convert strikes to integers, handle invalid values
+                # Debug raw strike values and filter invalid ones
+                st.write(f"Debug - {column} raw values: {raw_values[:10]}")
                 valid_strikes = []
-                for v in values:
+                for v in raw_values:
                     try:
                         num_value = float(v)
-                        if num_value > 0:  # Exclude invalid or negative strikes
+                        if num_value > 0:
                             valid_strikes.append(int(num_value))
                     except (ValueError, TypeError):
+                        st.write(f"Debug - Invalid strike value skipped: {v}")
                         continue
-                return sorted(list(set(valid_strikes))) if valid_strikes else [0]
+                return sorted(list(set(valid_strikes))) if valid_strikes else [5500]  # Default to 5500 if no valid strikes
             else:
-                return sorted(list(set(values)), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
+                return sorted(list(set(raw_values)), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
             st.write(f"Debug - Error processing {column} values: {e}")
-            return values
+            return raw_values
     return []
 
 # Fetch data in chunks with filters
@@ -51,12 +53,16 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     offset = 0
     all_data = []
     query = supabase.table(table_name).select("*")
+    st.write(f"Debug - Applied filters: type_optie={type_optie}, snapshot_dates={snapshot_dates}, strike={strike}")
     if type_optie:
         query = query.eq("type", type_optie)
     if snapshot_dates and len(snapshot_dates) > 0:
         query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
     if strike is not None and strike != 0:  # Only apply strike filter if valid
         query = query.eq("strike", strike)
+    # Test query without filters
+    test_response = supabase.table(table_name).select("*").limit(1).execute()
+    st.write(f"Debug - Test query result (first row): {test_response.data}")
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -69,7 +75,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
         st.write("Debug - Unique snapshot_dates in fetched data:", sorted(df["snapshot_date"].unique()))
-        st.write("Debug - Unique strikes in fetched data:", sorted(df["strike"].unique()))  # Added for debug
+        st.write("Debug - Unique strikes in fetched data:", sorted(df["strike"].unique()))
         return df.sort_values("snapshot_date")
     st.write("Debug - No data fetched. Check filters or Supabase connection.")
     return pd.DataFrame()
