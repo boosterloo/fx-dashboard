@@ -21,29 +21,19 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        raw_values = [row[column] for row in response.data if row[column] is not None]
-        st.write(f"Debug - {column} raw values before processing: {raw_values[:10]}")
+        values = [row[column] for row in response.data if row[column] is not None]
+        st.write(f"Debug - {column} raw values: {values[:10]}")
         try:
             if column == "expiration" or column == "snapshot_date":
-                values = [pd.to_datetime(v).date() for v in raw_values]
-                return sorted(list(set(values)), key=lambda x: pd.to_datetime(x))
+                return sorted(values, key=lambda x: pd.to_datetime(x).date())  # Use only date part
             elif column == "strike":
-                st.write(f"Debug - {column} raw values: {raw_values[:10]}")
-                valid_strikes = []
-                for v in raw_values:
-                    try:
-                        num_value = float(v)
-                        if num_value > 0:
-                            valid_strikes.append(int(num_value))
-                    except (ValueError, TypeError):
-                        st.write(f"Debug - Invalid strike value skipped: {v}")
-                        continue
-                return sorted(list(set(valid_strikes))) if valid_strikes else [5500]
+                valid_strikes = [int(float(x)) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
+                return sorted(list(set(valid_strikes))) if valid_strikes else [0]
             else:
-                return sorted(list(set(raw_values)), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
+                return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
             st.write(f"Debug - Error processing {column} values: {e}")
-            return raw_values
+            return values
     return []
 
 # Fetch data in chunks with filters
@@ -52,19 +42,12 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     offset = 0
     all_data = []
     query = supabase.table(table_name).select("*")
-    st.write(f"Debug - Applied filters: type_optie={type_optie}, snapshot_dates={snapshot_dates}, strike={strike}")
     if type_optie:
         query = query.eq("type", type_optie)
-        st.write(f"Debug - Filtering by type: {type_optie}")
     if snapshot_dates and len(snapshot_dates) > 0:
-        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
-        st.write(f"Debug - Filtering by snapshot_dates: {[str(s) for s in snapshot_dates]}")
-    if strike is not None and strike != 0:
-        query = query.eq("strike", strike)
-        st.write(f"Debug - Filtering by strike: {strike}")
-    # Test query without filters
-    test_response = supabase.table(table_name).select("*").limit(1).execute()
-    st.write(f"Debug - Test query result (first row): {test_response.data}")
+        query = query.in_("snapshot_date", [str(pd.to_datetime(s).date()) for s in snapshot_dates])  # Use only date part
+    if strike is not None:
+        query = query.eq("strike", int(strike))
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -74,28 +57,28 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     if all_data:
         df = pd.DataFrame(all_data)
         st.write("Debug - Fetched data shape:", df.shape)
-        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"]).dt.date  # Standardize to date only
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
-        st.write("Debug - Unique snapshot_dates in fetched data:", sorted(df["snapshot_date"].unique()))
-        st.write("Debug - Unique strikes in fetched data:", sorted(df["strike"].unique()))
+        st.write("Debug - Unique snapshot_dates in fetched data:", df["snapshot_date"].unique())
         return df.sort_values("snapshot_date")
     st.write("Debug - No data fetched. Check filters or Supabase connection.")
     return pd.DataFrame()
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
-type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=0)  # Default to "call" to match test data
+type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=1)  # Default to "put"
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
-    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=snapshot_dates_sorted[0] if snapshot_dates_sorted else [])
+    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=[snapshot_dates_sorted[0]])
 else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    default_strike = strikes[0] if strikes else 5500
-    strike = st.sidebar.selectbox("Selecteer Strike", strikes, index=strikes.index(default_strike))
+    min_strike = min(strikes)
+    max_strike = max(strikes)
+    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=5500, step=1)
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
@@ -115,16 +98,14 @@ if not df_all_data.empty:
     # Group by snapshot_date and days_to_maturity to ensure unique lines
     df_maturity = df_maturity.groupby(["snapshot_date", "days_to_maturity"]).agg({"ppd": "mean", "strike": "first", "bid": "first", "expiration": "first"}).reset_index()
     st.write("Debug - Processed df_maturity shape:", df_maturity.shape)
-    st.write("Debug - Unique snapshot_dates in df_maturity:", sorted(df_maturity["snapshot_date"].unique()))
+    st.write("Debug - Unique snapshot_dates in df_maturity:", df_maturity["snapshot_date"].unique())
     
     # Main chart (full range) with increased Y-axis space and colored lines
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
+        color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Use 'N' for nominal
         tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
-    ).transform_filter(
-        alt.FieldOneOfPredicate(field="snapshot_date", oneOf=list(df_maturity["snapshot_date"].unique()))
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
         height=700
@@ -138,10 +119,8 @@ if not df_all_data.empty:
         chart2_short = alt.Chart(df_short_term).mark_line(point=True).encode(
             x=alt.X("days_to_maturity:Q", title=f"Dagen tot Maturity (0-{max_days})", sort=None),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-            color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
+            color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Use 'N' for nominal
             tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
-        ).transform_filter(
-            alt.FieldOneOfPredicate(field="snapshot_date", oneOf=list(df_short_term["snapshot_date"].unique()))
         ).interactive().properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
             height=400
