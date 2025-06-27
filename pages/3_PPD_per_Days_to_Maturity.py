@@ -95,11 +95,11 @@ if not df_all_data.empty:
     df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]  # Only filter out invalid days
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
     
-    # Main chart (full range) with increased Y-axis space
+    # Main chart (full range) with increased Y-axis space and colored lines
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:T", title="Peildatum"),  # Different line per snapshot_date
+        color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Categorical color scheme
         tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
@@ -107,14 +107,14 @@ if not df_all_data.empty:
     )
     st.altair_chart(chart2_main, use_container_width=True)
     
-    # Second chart for adjustable range
+    # Second chart for adjustable range with colored lines
     max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()) if not df_maturity["days_to_maturity"].empty else 21, 21)
     df_short_term = df_maturity[df_maturity["days_to_maturity"] <= max_days]
     if not df_short_term.empty:
         chart2_short = alt.Chart(df_short_term).mark_line(point=True).encode(
             x=alt.X("days_to_maturity:Q", title=f"Dagen tot Maturity (0-{max_days})", sort=None),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-            color=alt.Color("snapshot_date:T", title="Peildatum"),  # Different line per snapshot_date
+            color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Categorical color scheme
             tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
         ).interactive().properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
