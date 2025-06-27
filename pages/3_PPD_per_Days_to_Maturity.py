@@ -21,12 +21,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        values = list(set(row[column] for row in response.data if row[column] is not None))
+        values = [row[column] for row in response.data if row[column] is not None]  # Flatten list
         st.write(f"Debug - {column} values: {values[:10]}")
         if column == "expiration" or column == "snapshot_date":
             return sorted(values, key=lambda x: pd.to_datetime(x))
         else:
-            return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else 0)
+            return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else x)
     return []
 
 # Fetch data in chunks with filters
@@ -39,8 +39,8 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=
         query = query.eq("type", type_optie)
     if snapshot_date:
         query = query.eq("snapshot_date", str(snapshot_date))
-    if strike:
-        query = query.eq("strike", strike)
+    if strike is not None:  # Check if strike is provided
+        query = query.eq("strike", float(strike))  # Ensure strike is float for comparison
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -49,9 +49,11 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=
         offset += batch_size
     if all_data:
         df = pd.DataFrame(all_data)
+        st.write("Debug - Fetched data shape:", df.shape)  # Debug
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
         return df.sort_values("snapshot_date")
+    st.write("Debug - No data fetched. Check filters or Supabase connection.")
     return pd.DataFrame()
 
 # Sidebar filters
@@ -66,7 +68,12 @@ else:
     selected_snapshot_date = None
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
-strike = st.sidebar.slider("Strike", min_value=float(min(strikes)) if strikes else 0.0, max_value=float(max(strikes)) if strikes else 10000.0, value=6000.0, step=100.0) if strikes else 6000.0
+if strikes:
+    min_strike = float(min(strikes)) if strikes else 0.0
+    max_strike = float(max(strikes)) if strikes else 10000.0
+    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=min_strike, step=100.0)
+else:
+    strike = 6000.0  # Default value if no strikes available
 
 # Fetch data with filters
 df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_date, strike)
@@ -103,4 +110,4 @@ if not df_all_data.empty:
         best_maturity = df_maturity.loc[df_maturity["ppd"].idxmax(), "days_to_maturity"]
         st.write(f"Gunstige maturity om te schrijven/kopen: ~{best_maturity} dagen (max PPD: {max_ppd:.4f})")
 else:
-    st.write("Geen data gevonden voor de geselecteerde filters.")
+    st.write("Geen data gevonden voor de geselecteerde filters. Debug: Check Supabase data or filter values.")
