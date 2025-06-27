@@ -39,14 +39,14 @@ def get_unique_values(table_name, column):
 
 # Fetch data in chunks with filters
 @st.cache_data(ttl=3600)
-def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=None, batch_size=1000):
+def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike=None, batch_size=1000):
     offset = 0
     all_data = []
     query = supabase.table(table_name).select("*")
     if type_optie:
         query = query.eq("type", type_optie)
-    if snapshot_date:
-        query = query.eq("snapshot_date", str(snapshot_date))
+    if snapshot_dates and len(snapshot_dates) > 0:
+        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
     if strike is not None:
         query = query.eq("strike", int(strike))  # Use integer for strike
     while True:
@@ -70,10 +70,9 @@ type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], inde
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
-    default_snapshot = snapshot_dates_sorted[0]  # Meest recente als standaard
-    selected_snapshot_date = st.sidebar.selectbox("Selecteer Peildatum", snapshot_dates_sorted, index=0)
+    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=[snapshot_dates_sorted[0]])  # Default to most recent
 else:
-    selected_snapshot_date = None
+    selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
@@ -86,7 +85,7 @@ else:
     st.sidebar.write("Debug - No valid strikes found, using default: 5500")
 
 # Fetch data with filters
-df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_date, strike)
+df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_dates, strike)
 
 st.header("PPD per Days to Maturity")
 if not df_all_data.empty:
@@ -100,27 +99,30 @@ if not df_all_data.empty:
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
+        color=alt.Color("snapshot_date:T", title="Peildatum"),  # Different line per snapshot_date
+        tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
-        title=f"PPD per Dag tot Maturity (Overzicht) — {selected_snapshot_date} | {type_optie.upper()} | Strike {strike}",
+        title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
         height=700  # Further increased height for more Y-axis space
     )
     st.altair_chart(chart2_main, use_container_width=True)
     
-    # Second chart for first 21 days
-    df_short_term = df_maturity[df_maturity["days_to_maturity"] <= 21]
+    # Second chart for adjustable range
+    max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()) if not df_maturity["days_to_maturity"].empty else 21, 21)
+    df_short_term = df_maturity[df_maturity["days_to_maturity"] <= max_days]
     if not df_short_term.empty:
         chart2_short = alt.Chart(df_short_term).mark_line(point=True).encode(
-            x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity (0-21)", sort=None),
+            x=alt.X("days_to_maturity:Q", title=f"Dagen tot Maturity (0-{max_days})", sort=None),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-            tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
+            color=alt.Color("snapshot_date:T", title="Peildatum"),  # Different line per snapshot_date
+            tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
         ).interactive().properties(
-            title="PPD per Dag tot Maturity (0-21 dagen)",
+            title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
             height=400
         )
         st.altair_chart(chart2_short, use_container_width=True)
     else:
-        st.write("Geen data beschikbaar voor de eerste 21 dagen.")
+        st.write(f"Geen data beschikbaar voor dagen tot maturity ≤ {max_days}.")
     
     # Tables and debug info (bottom)
     initial_rows = len(df_maturity)
