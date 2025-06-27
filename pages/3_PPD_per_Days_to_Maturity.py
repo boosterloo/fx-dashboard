@@ -16,17 +16,25 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch unique values for filters
+# Fetch unique values for filters with error handling
 @st.cache_data(ttl=3600)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
-        values = [row[column] for row in response.data if row[column] is not None]  # Flatten list
-        st.write(f"Debug - {column} values: {values[:10]}")
-        if column == "expiration" or column == "snapshot_date":
-            return sorted(values, key=lambda x: pd.to_datetime(x))
-        else:
-            return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else x)
+        values = [row[column] for row in response.data if row[column] is not None]
+        st.write(f"Debug - {column} raw values: {values[:10]}")
+        try:
+            if column == "expiration" or column == "snapshot_date":
+                return sorted(values, key=lambda x: pd.to_datetime(x))
+            elif column == "strike":
+                # Safe conversion to float, filter out invalid values
+                valid_strikes = [float(x) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
+                return sorted(valid_strikes) if valid_strikes else [0.0]  # Default to [0.0] if no valid strikes
+            else:
+                return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
+        except Exception as e:
+            st.write(f"Debug - Error processing {column} values: {e}")
+            return values  # Fallback to raw values if conversion fails
     return []
 
 # Fetch data in chunks with filters
@@ -39,8 +47,8 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=
         query = query.eq("type", type_optie)
     if snapshot_date:
         query = query.eq("snapshot_date", str(snapshot_date))
-    if strike is not None:  # Check if strike is provided
-        query = query.eq("strike", float(strike))  # Ensure strike is float for comparison
+    if strike is not None:
+        query = query.eq("strike", float(strike))  # Ensure strike is float
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -49,7 +57,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=
         offset += batch_size
     if all_data:
         df = pd.DataFrame(all_data)
-        st.write("Debug - Fetched data shape:", df.shape)  # Debug
+        st.write("Debug - Fetched data shape:", df.shape)
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
         return df.sort_values("snapshot_date")
@@ -68,12 +76,14 @@ else:
     selected_snapshot_date = None
     st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
-if strikes:
-    min_strike = float(min(strikes)) if strikes else 0.0
-    max_strike = float(max(strikes)) if strikes else 10000.0
+if strikes and len(strikes) > 0:
+    min_strike = min(strikes)
+    max_strike = max(strikes)
     strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=min_strike, step=100.0)
+    st.sidebar.write(f"Debug - Selected strike: {strike}")  # Debug to confirm filter
 else:
-    strike = 6000.0  # Default value if no strikes available
+    strike = 6000.0  # Default if no valid strikes
+    st.sidebar.write("Debug - No valid strikes found, using default: 6000.0")
 
 # Fetch data with filters
 df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_date, strike)
