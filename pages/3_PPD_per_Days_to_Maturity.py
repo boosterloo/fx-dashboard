@@ -25,16 +25,15 @@ def get_unique_values(table_name, column):
         st.write(f"Debug - {column} raw values: {values[:10]}")
         try:
             if column == "expiration" or column == "snapshot_date":
-                return sorted(values, key=lambda x: pd.to_datetime(x))
+                return sorted(values, key=lambda x: pd.to_datetime(x).date())  # Use only date part
             elif column == "strike":
-                # Safe conversion to float, filter out invalid values, round to integer
                 valid_strikes = [int(float(x)) for x in values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
-                return sorted(list(set(valid_strikes))) if valid_strikes else [0]  # Unique integers
+                return sorted(list(set(valid_strikes))) if valid_strikes else [0]
             else:
                 return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
             st.write(f"Debug - Error processing {column} values: {e}")
-            return values  # Fallback to raw values if conversion fails
+            return values
     return []
 
 # Fetch data in chunks with filters
@@ -46,9 +45,9 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     if type_optie:
         query = query.eq("type", type_optie)
     if snapshot_dates and len(snapshot_dates) > 0:
-        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
+        query = query.in_("snapshot_date", [str(pd.to_datetime(s).date()) for s in snapshot_dates])  # Use only date part
     if strike is not None:
-        query = query.eq("strike", int(strike))  # Use integer for strike
+        query = query.eq("strike", int(strike))
     while True:
         response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
@@ -58,8 +57,9 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     if all_data:
         df = pd.DataFrame(all_data)
         st.write("Debug - Fetched data shape:", df.shape)
-        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"]).dt.date  # Standardize to date only
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
+        st.write("Debug - Unique snapshot_dates in fetched data:", df["snapshot_date"].unique())
         return df.sort_values("snapshot_date")
     st.write("Debug - No data fetched. Check filters or Supabase connection.")
     return pd.DataFrame()
@@ -70,7 +70,7 @@ type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], inde
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
-    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=[snapshot_dates_sorted[0]])  # Default to most recent
+    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=[snapshot_dates_sorted[0]])
 else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
@@ -78,10 +78,10 @@ strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
     min_strike = min(strikes)
     max_strike = max(strikes)
-    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=5500, step=1)  # Default 5500, integer step
-    st.sidebar.write(f"Debug - Selected strike: {strike}")  # Debug to confirm filter
+    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=5500, step=1)
+    st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
-    strike = 5500  # Default if no valid strikes
+    strike = 5500
     st.sidebar.write("Debug - No valid strikes found, using default: 5500")
 
 # Fetch data with filters
@@ -91,22 +91,24 @@ st.header("PPD per Days to Maturity")
 if not df_all_data.empty:
     df_maturity = df_all_data.copy()
     
-    df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
-    df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]  # Only filter out invalid days
+    df_maturity["days_to_maturity"] = (df_maturity["expiration"] - pd.to_datetime(df_maturity["snapshot_date"])).dt.days
+    df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
     
-    # Group by snapshot_date to ensure unique lines
+    # Group by snapshot_date and days_to_maturity to ensure unique lines
     df_maturity = df_maturity.groupby(["snapshot_date", "days_to_maturity"]).agg({"ppd": "mean", "strike": "first", "bid": "first", "expiration": "first"}).reset_index()
+    st.write("Debug - Processed df_maturity shape:", df_maturity.shape)
+    st.write("Debug - Unique snapshot_dates in df_maturity:", df_maturity["snapshot_date"].unique())
     
     # Main chart (full range) with increased Y-axis space and colored lines
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Categorical color scheme
+        color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Use 'N' for nominal
         tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
-        height=700  # Further increased height for more Y-axis space
+        height=700
     )
     st.altair_chart(chart2_main, use_container_width=True)
     
@@ -117,7 +119,7 @@ if not df_all_data.empty:
         chart2_short = alt.Chart(df_short_term).mark_line(point=True).encode(
             x=alt.X("days_to_maturity:Q", title=f"Dagen tot Maturity (0-{max_days})", sort=None),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-            color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Categorical color scheme
+            color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),  # Use 'N' for nominal
             tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
         ).interactive().properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
