@@ -29,9 +29,9 @@ def get_unique_values(table_name, column):
             return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else 0)
     return []
 
-# Fetch all data in chunks
+# Fetch data in chunks with filters
 @st.cache_data(ttl=3600)
-def fetch_all_data(table_name, type_optie=None, snapshot_date=None, strike=None, batch_size=1000):
+def fetch_filtered_data(table_name, type_optie=None, snapshot_date=None, strike=None, batch_size=1000):
     offset = 0
     all_data = []
     query = supabase.table(table_name).select("*")
@@ -58,12 +58,18 @@ def fetch_all_data(table_name, type_optie=None, snapshot_date=None, strike=None,
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
 type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"])
 snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
-selected_snapshot_date = st.sidebar.selectbox("Selecteer Peildatum", snapshot_dates) if snapshot_dates else None
+if snapshot_dates:
+    snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
+    default_snapshot = snapshot_dates_sorted[0]  # Meest recente als standaard
+    selected_snapshot_date = st.sidebar.selectbox("Selecteer Peildatum", snapshot_dates_sorted, index=0)
+else:
+    selected_snapshot_date = None
+    st.sidebar.write("Geen peildata beschikbaar.")
 strikes = get_unique_values("spx_options2", "strike")
 strike = st.sidebar.slider("Strike", min_value=float(min(strikes)) if strikes else 0.0, max_value=float(max(strikes)) if strikes else 10000.0, value=6000.0, step=100.0) if strikes else 6000.0
 
 # Fetch data with filters
-df_all_data = fetch_all_data("spx_options2", type_optie, selected_snapshot_date, strike)
+df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_date, strike)
 
 st.header("PPD per Days to Maturity")
 if not df_all_data.empty:

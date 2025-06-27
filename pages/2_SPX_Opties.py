@@ -23,19 +23,22 @@ def get_unique_values(table_name, column):
     if response.data:
         values = list(set(row[column] for row in response.data if row[column] is not None))
         st.write(f"Debug - {column} values: {values[:10]}")
-        if column == "expiration":
+        if column == "expiration" or column == "snapshot_date":
             return sorted(values, key=lambda x: pd.to_datetime(x))
         else:
             return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float, str)) and x.replace('.', '').replace('-', '').isdigit() else 0)
     return []
 
-# Fetch all data in chunks
+# Fetch all data in chunks with optional filter
 @st.cache_data(ttl=3600)
-def fetch_all_data(table_name, batch_size=1000):
+def fetch_all_data(table_name, type_optie=None, batch_size=1000):
     offset = 0
     all_data = []
+    query = supabase.table(table_name).select("*")
+    if type_optie:
+        query = query.eq("type", type_optie)
     while True:
-        response = supabase.table(table_name).select("*").range(offset, offset + batch_size - 1).execute()
+        response = query.range(offset, offset + batch_size - 1).execute()
         if not response.data:
             break
         all_data.extend(response.data)
@@ -47,8 +50,12 @@ def fetch_all_data(table_name, batch_size=1000):
         return df.sort_values("snapshot_date")
     return pd.DataFrame()
 
+# Sidebar filter
+st.sidebar.header("🔍 Filters voor PPD per Peildatum")
+type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put", None], index=2)  # None als default
+
 # Fetch data
-df_all_data = fetch_all_data("spx_options2")
+df_all_data = fetch_all_data("spx_options2", type_optie)
 
 st.header("PPD per Peildatum")
 if not df_all_data.empty:
@@ -63,7 +70,7 @@ if not df_all_data.empty:
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
         tooltip=["snapshot_date", "ppd", "bid", "ask", "days_to_maturity"]
     ).interactive().properties(
-        title="PPD-verloop — Alle Data",
+        title="PPD-verloop — Alle Data" + (f" | {type_optie.upper()}" if type_optie else ""),
         height=400
     )
     st.altair_chart(chart1, use_container_width=True)
