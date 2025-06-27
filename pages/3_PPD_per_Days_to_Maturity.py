@@ -5,7 +5,7 @@ from supabase import create_client, Client
 import os
 
 # Set page config
-st.set_page_config(page_title="SPX Opties - PPD per Peildatum", layout="wide")
+st.set_page_config(page_title="SPX Opties - PPD per Days to Maturity", layout="wide")
 
 # Initialize Supabase client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -50,30 +50,44 @@ def fetch_all_data(table_name, batch_size=1000):
 # Fetch data
 df_all_data = fetch_all_data("spx_options2")
 
-st.header("PPD per Peildatum")
-if not df_all_data.empty:
-    df_filtered_tab1 = df_all_data.copy()
-    df_filtered_tab1["days_to_maturity"] = (df_filtered_tab1["expiration"] - df_filtered_tab1["snapshot_date"]).dt.days
-    df_filtered_tab1 = df_filtered_tab1[df_filtered_tab1["days_to_maturity"] > 0]
-    df_filtered_tab1["ppd"] = df_filtered_tab1["bid"] / df_filtered_tab1["days_to_maturity"].replace(0, 0.01)
+st.header("PPD per Days to Maturity")
+snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
+if snapshot_dates:
+    snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
+    default_snapshot = snapshot_dates_sorted[0]
+    selected_snapshot_date = st.selectbox("Selecteer Peildatum", snapshot_dates_sorted, index=0, key="snapshot_date_tab2")
+else:
+    selected_snapshot_date = None
+    st.write("Geen peildata beschikbaar.")
+
+if not df_all_data.empty and selected_snapshot_date:
+    df_maturity = df_all_data[df_all_data["snapshot_date"] == pd.to_datetime(selected_snapshot_date, utc=True)].copy()
     
-    st.write("Aantal rijen na filtering:", len(df_filtered_tab1))
-    invalid_ppd = df_filtered_tab1["ppd"].isna().sum()
+    df_maturity["days_to_maturity"] = (df_maturity["expiration"] - df_maturity["snapshot_date"]).dt.days
+    df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]  # Only filter out invalid days
+    df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
+    
+    initial_rows = len(df_maturity)
+    st.write("Aantal rijen na snapshot-filter:", initial_rows)
+    invalid_ppd = df_maturity["ppd"].isna().sum()
     st.write(f"Aantal rijen met ongeldige PPD (NaN): {invalid_ppd}")
-    st.write("Gefilterde data:", df_filtered_tab1)
+    st.write("Unieke days_to_maturity waarden:", sorted(df_maturity["days_to_maturity"].unique()))  # Debug unique values
     
-    chart1 = alt.Chart(df_filtered_tab1).mark_line(point=True).encode(
-        x=alt.X("snapshot_date:T", title="Peildatum"),
+    st.write("Gefilterde data:", df_maturity)
+    
+    chart2 = alt.Chart(df_maturity).mark_line(point=True).encode(
+        x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        tooltip=["snapshot_date", "ppd", "bid", "ask", "days_to_maturity"]
+        tooltip=["expiration", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
-        title="PPD-verloop — Alle Data",
+        title=f"PPD per Dag tot Maturity — {selected_snapshot_date}",
         height=400
     )
-    st.altair_chart(chart1, use_container_width=True)
+    st.altair_chart(chart2, use_container_width=True)
+    
+    if not df_maturity["ppd"].empty:
+        max_ppd = df_maturity["ppd"].max()
+        best_maturity = df_maturity.loc[df_maturity["ppd"].idxmax(), "days_to_maturity"]
+        st.write(f"Gunstige maturity om te schrijven/kopen: ~{best_maturity} dagen (max PPD: {max_ppd:.4f})")
 else:
-    st.write("Geen data gevonden in Supabase.")
-
-# Move Strikes list to the bottom of the page
-strikes = get_unique_values("spx_options2", "strike")
-st.write("Debug - Strikes list:", strikes)
+    st.write("Geen data gevonden voor de geselecteerde filters.")
