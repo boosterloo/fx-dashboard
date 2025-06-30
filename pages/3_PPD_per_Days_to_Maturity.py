@@ -73,7 +73,7 @@ else:
     selected_snapshot_dates = []
 strikes = get_unique_values("spx_options2", "strike")
 if strikes:
-    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=strikes.index(5500) if 5500 in strikes else 0)
+    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=strikes.index(5500) if 5500 in strikes else 0, format_func=lambda x: f"{x:.0f}")
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
@@ -89,14 +89,16 @@ if not df_all_data.empty:
     df = df[df["days_to_maturity"] > 0]
     df["ppd"] = df["bid"] / df["days_to_maturity"].replace(0, 0.01)
 
+    df = df[df["snapshot_date"].isin(selected_snapshot_dates)]
+
     # Eerste grafiek (lijn)
     chart_line = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort="ascending"),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:T", title="Peildatum"),
+        color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="dark2")),
         tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
     ).interactive().properties(
-        title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
+        title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike:.0f}",
         height=500
     )
     st.altair_chart(chart_line, use_container_width=True)
@@ -110,7 +112,7 @@ if not df_all_data.empty:
         bar_chart = alt.Chart(df_short).mark_bar().encode(
             x=alt.X("days_to_maturity:O", title=f"Dagen tot Maturity (0-{max_days})", sort=list(map(str, sorted(df_short["days_to_maturity"].unique())))),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True)),
-            color=alt.Color("snapshot_date:T", title="Peildatum"),
+            color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="dark2")),
             tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
         ).properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
