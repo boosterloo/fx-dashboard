@@ -91,11 +91,13 @@ if not df_all_data.empty:
 
     df = df[df["snapshot_date"].isin(selected_snapshot_dates)]
 
+    color_scale = alt.Scale(domain=[str(d) for d in selected_snapshot_dates], scheme="category10")
+
     # Eerste grafiek (lijn)
     chart_line = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort="ascending"),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(domain=selected_snapshot_dates)),
+        color=alt.Color("snapshot_date:N", title="Peildatum", scale=color_scale),
         tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike:.0f}",
@@ -109,24 +111,15 @@ if not df_all_data.empty:
     df_short = df_short.sort_values(by=["days_to_maturity", "snapshot_date"])
 
     if not df_short.empty:
-        bar_chart = alt.Chart(df_short).mark_bar().encode(
+        bar_chart = alt.Chart(df_short).mark_bar(size=15).encode(
             x=alt.X("days_to_maturity:O", title=f"Dagen tot Maturity (0-{max_days})", sort=list(map(str, sorted(df_short["days_to_maturity"].unique())))),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True)),
-            color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(domain=selected_snapshot_dates)),
+            color=alt.Color("snapshot_date:N", title="Peildatum", scale=color_scale),
             tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
         ).properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
             height=400
-        ).configure_mark(
-            opacity=1,
-            filled=True
-        ).interactive().encode(
-            x=alt.X("days_to_maturity:O", title=f"Dagen tot Maturity (0-{max_days})", sort=list(map(str, sorted(df_short["days_to_maturity"].unique())))),
-            y="ppd:Q",
-            color=alt.Color("snapshot_date:T", scale=alt.Scale(domain=selected_snapshot_dates)),
-            tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
-        ).mark_bar(size=15)
-
+        )
         st.altair_chart(bar_chart, use_container_width=True)
     else:
         st.write(f"Geen data beschikbaar voor dagen tot maturity ≤ {max_days}.")
