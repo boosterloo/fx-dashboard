@@ -23,7 +23,7 @@ def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, 
     all_symbols = set()
     while True:
         try:
-            query = supabase.table(table_name).select("contractSymbol, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("contractsymbol, type, expiration, strike").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
@@ -31,12 +31,12 @@ def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, 
                 if (type_optie is None or row.get("type") == type_optie) and \
                    (expiration is None or row.get("expiration") == expiration) and \
                    (strike is None or row.get("strike") == strike):
-                    symbol = row.get("contractSymbol")
+                    symbol = row.get("contractsymbol")
                     if symbol:
                         all_symbols.add(symbol)
             offset += batch_size
         except Exception as e:
-            st.error(f"Fout bij ophalen van contractSymbol: {e}")
+            st.error(f"Fout bij ophalen van contractsymbol: {e}")
             break
     return sorted(all_symbols)
 
@@ -44,7 +44,7 @@ def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, 
 @st.cache_data(ttl=3600)
 def fetch_contract_data(table_name, contract_symbol):
     try:
-        response = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility").eq("contractSymbol", contract_symbol).order("snapshot_date").execute()
+        response = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility").eq("contractsymbol", contract_symbol).order("snapshot_date").execute()
         if response.data:
             df = pd.DataFrame(response.data)
             df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
@@ -69,7 +69,7 @@ if not contract_symbols:
     st.error("Geen optieseries gevonden voor de opgegeven filters.")
     st.stop()
 
-selected_symbol = st.selectbox("Selecteer een optieserie (contractSymbol):", contract_symbols)
+selected_symbol = st.selectbox("Selecteer een optieserie (contractsymbol):", contract_symbols)
 
 # Fetch data
 df = fetch_contract_data("spx_options2", selected_symbol)
