@@ -16,21 +16,26 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch unique values for filters with error handling
+# Unieke snapshot_dates met formatting voor dropdown
+@st.cache_data(ttl=3600)
+def get_unique_snapshot_dates(table_name):
+    response = supabase.table(table_name).select("snapshot_date").execute()
+    if response.data:
+        raw_values = [row["snapshot_date"] for row in response.data if row["snapshot_date"] is not None]
+        dt_values = pd.to_datetime(raw_values, utc=True, errors="coerce").dropna()
+        unique_dt_values = sorted(list(set(dt_values)))
+        display_values = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in unique_dt_values]
+        return display_values, unique_dt_values
+    return [], []
+
+# Overige unieke kolommen
 @st.cache_data(ttl=3600)
 def get_unique_values(table_name, column):
     response = supabase.table(table_name).select(column).execute()
     if response.data:
         raw_values = [row[column] for row in response.data if row[column] is not None]
-        st.write(f"Debug - {column} raw values (eerste 10): {raw_values[:10]}")
         try:
-            if column in ["expiration", "snapshot_date"]:
-                # Zet om naar datetime incl. tijd, zonder microseconden en zonder +00:00
-                datetime_values = pd.to_datetime(raw_values, utc=True, errors="coerce").dropna()
-                unique_values = sorted(list(set(datetime_values)))
-                formatted_values = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in unique_values]
-                return formatted_values
-            elif column == "strike":
+            if column == "strike":
                 valid_strikes = [int(float(x)) for x in raw_values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
                 return sorted(list(set(valid_strikes))) if valid_strikes else [0]
             else:
@@ -41,7 +46,7 @@ def get_unique_values(table_name, column):
             return sorted(list(set(raw_values)))
     return []
 
-# Fetch data in chunks with filters
+# Ophalen van gefilterde data
 @st.cache_data(ttl=3600)
 def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike=None, batch_size=1000):
     offset = 0
@@ -50,9 +55,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
     if type_optie:
         query = query.eq("type", type_optie)
     if snapshot_dates and len(snapshot_dates) > 0:
-        # Zet stringformat weer om naar ISO voor vergelijking met Supabase
-        snapshot_dates_parsed = [str(pd.to_datetime(s)) for s in snapshot_dates]
-        query = query.in_("snapshot_date", snapshot_dates_parsed)
+        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
     if strike is not None:
         query = query.eq("strike", int(strike))
     while True:
@@ -73,13 +76,17 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
 # Sidebar filters
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
 type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=1)
-snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
-if snapshot_dates:
-    snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
-    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=[snapshot_dates_sorted[0]])
+
+# Peildatum dropdown met unieke waarden en correcte mapping terug naar datetime
+display_dates, actual_dates = get_unique_snapshot_dates("spx_options2")
+if display_dates:
+    selected_display_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", display_dates, default=[display_dates[0]])
+    selected_snapshot_dates = [actual_dates[display_dates.index(s)] for s in selected_display_dates if s in display_dates]
 else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
+
+# Strike filter
 strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
     min_strike = min(strikes)
@@ -90,9 +97,10 @@ else:
     strike = 5500
     st.sidebar.write("Debug - No valid strikes found, using default: 5500")
 
-# Fetch data with filters
+# Data ophalen
 df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_dates, strike)
 
+# Hoofdsectie
 st.header("PPD per Days to Maturity")
 if not df_all_data.empty:
     df_maturity = df_all_data.copy()
@@ -100,6 +108,7 @@ if not df_all_data.empty:
     df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
 
+    # Grafiek volledig bereik
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
@@ -111,6 +120,7 @@ if not df_all_data.empty:
     )
     st.altair_chart(chart2_main, use_container_width=True)
 
+    # Korte termijn grafiek
     max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()) if not df_maturity["days_to_maturity"].empty else 21, 21)
     df_short_term = df_maturity[df_maturity["days_to_maturity"] <= max_days]
     if not df_short_term.empty:
@@ -127,10 +137,9 @@ if not df_all_data.empty:
     else:
         st.write(f"Geen data beschikbaar voor dagen tot maturity ≤ {max_days}.")
 
-    initial_rows = len(df_maturity)
-    st.write("Aantal rijen na filtering:", initial_rows)
-    invalid_ppd = df_maturity["ppd"].isna().sum()
-    st.write(f"Aantal rijen met ongeldige PPD (NaN): {invalid_ppd}")
+    # Tabel en debug info
+    st.write("Aantal rijen na filtering:", len(df_maturity))
+    st.write(f"Aantal rijen met ongeldige PPD (NaN): {df_maturity['ppd'].isna().sum()}")
     st.write("Unieke days_to_maturity waarden:", sorted(df_maturity["days_to_maturity"].unique()))
     st.write("Gefilterde data:", df_maturity)
 
