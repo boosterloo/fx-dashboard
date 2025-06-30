@@ -26,13 +26,9 @@ def get_unique_values(table_name, column):
             if column == "expiration" or column == "snapshot_date":
                 return sorted(set(values), key=lambda x: pd.to_datetime(x))
             elif column == "strike":
-                # Fetch only strikes with openInterest > 0
-                all_strike_data = supabase.table(table_name).select("strike", "openInterest").execute()
+                all_strike_data = supabase.table(table_name).select("strike").execute()
                 df = pd.DataFrame(all_strike_data.data)
-                if "openInterest" in df.columns:
-                    df = df[df["openInterest"].fillna(0) > 0]
-                    return sorted(df["strike"].dropna().unique().astype(int).tolist())
-                return []
+                return sorted(df["strike"].dropna().unique().astype(int).tolist())
             else:
                 return sorted(set(values), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
@@ -72,7 +68,7 @@ snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
 if snapshot_dates:
     snapshot_dates_sorted = sorted(snapshot_dates, key=lambda x: pd.to_datetime(x), reverse=True)
     default_snapshots = [snapshot_dates_sorted[0]]
-    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=default_snapshots)
+    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=default_snapshots, format_func=lambda x: pd.to_datetime(x).strftime('%Y-%m-%d %H:%M'))
 else:
     selected_snapshot_dates = []
 strikes = get_unique_values("spx_options2", "strike")
@@ -95,40 +91,40 @@ if not df_all_data.empty:
 
     df = df[df["snapshot_date"].isin(selected_snapshot_dates)]
 
-    color_scale = alt.Scale(domain=[str(d) for d in selected_snapshot_dates], range=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"])
+    color_scale = alt.Scale(domain=[str(pd.to_datetime(d).strftime('%Y-%m-%d %H:%M')) for d in selected_snapshot_dates], 
+                            range=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"])
 
-    # Eerste grafiek (lijn)
+    df["snapshot_label"] = df["snapshot_date"].dt.strftime('%Y-%m-%d %H:%M')
+
     chart_line = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort="ascending"),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:N", title="Peildatum", scale=color_scale),
-        tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
+        color=alt.Color("snapshot_label:N", title="Peildatum", scale=color_scale),
+        tooltip=["snapshot_label:N", "days_to_maturity", "ppd"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike:.0f}",
         height=500
     )
     st.altair_chart(chart_line, use_container_width=True)
 
-    # Tweede grafiek (staaf)
     max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df["days_to_maturity"].max()), 21)
     df_short = df[df["days_to_maturity"] <= max_days].copy()
     df_short = df_short.sort_values(by=["days_to_maturity", "snapshot_date"])
 
     if not df_short.empty:
-        bar_chart = alt.Chart(df_short).mark_bar(size=15).encode(
+        line_chart = alt.Chart(df_short).mark_line(point=True).encode(
             x=alt.X("days_to_maturity:O", title=f"Dagen tot Maturity (0-{max_days})", sort=list(map(str, sorted(df_short["days_to_maturity"].unique())))),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True)),
-            color=alt.Color("snapshot_date:N", title="Peildatum", scale=color_scale),
-            tooltip=["snapshot_date:T", "days_to_maturity", "ppd"]
+            color=alt.Color("snapshot_label:N", title="Peildatum", scale=color_scale),
+            tooltip=["snapshot_label:N", "days_to_maturity", "ppd"]
         ).properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
             height=400
         )
-        st.altair_chart(bar_chart, use_container_width=True)
+        st.altair_chart(line_chart, use_container_width=True)
     else:
         st.write(f"Geen data beschikbaar voor dagen tot maturity ≤ {max_days}.")
 
-    # Debug info
     st.write("Aantal rijen na filtering:", len(df))
     st.write("Aantal rijen met ongeldige PPD (NaN):", df["ppd"].isna().sum())
 else:
