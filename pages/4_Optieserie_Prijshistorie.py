@@ -62,10 +62,10 @@ st.title("📈 Prijsontwikkeling van een Optieserie")
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=0)
-expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value="2023-08-18")  # Aanpassen naar bestaande waarde
+expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value="2025-06-20")  # Matcht met tabeldata
 expiration = expiration_input if expiration_input else None
-strike_input = st.sidebar.text_input("Strike (bijv. 617.07)", value="617.07")  # Aanpassen naar bestaande waarde
-strike = float(strike_input) if strike_input and strike_input.replace('.', '').isdigit() else None  # Float voor decimalen
+strike_input = st.sidebar.text_input("Strike (bijv. 617.07)", value="600")  # Matcht met tabeldata
+strike = float(strike_input) if strike_input and strike_input.replace('.', '').isdigit() else None
 
 # Cache refresh button
 if st.button("Vernieuw cache"):
