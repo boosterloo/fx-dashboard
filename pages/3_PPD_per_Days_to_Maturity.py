@@ -28,22 +28,21 @@ def get_unique_snapshot_dates(table_name):
         return display_values, unique_dt_values
     return [], []
 
-# Overige unieke kolommen
+# Ophalen van actieve strikes op basis van bid > 0.01 en gekozen snapshot_dates
 @st.cache_data(ttl=3600)
-def get_unique_values(table_name, column):
-    response = supabase.table(table_name).select(column).execute()
+def get_active_strikes(table_name, snapshot_dates=None, min_bid=0.01):
+    query = supabase.table(table_name).select("strike", "snapshot_date", "bid")
+    if snapshot_dates and len(snapshot_dates) > 0:
+        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
+    response = query.execute()
     if response.data:
-        raw_values = [row[column] for row in response.data if row[column] is not None]
-        try:
-            if column == "strike":
-                valid_strikes = [int(float(x)) for x in raw_values if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit()]
-                return sorted(list(set(valid_strikes))) if valid_strikes else [0]
-            else:
-                numeric_values = [x for x in raw_values if isinstance(x, (int, float)) or (isinstance(x, str) and str(x).replace('.', '').replace('-', '').isdigit())]
-                return sorted(list(set(numeric_values)), key=lambda x: float(x))
-        except Exception as e:
-            st.write(f"Debug - Error processing {column} values: {e}")
-            return sorted(list(set(raw_values)))
+        df = pd.DataFrame(response.data)
+        df["bid"] = pd.to_numeric(df["bid"], errors="coerce")
+        df["strike"] = pd.to_numeric(df["strike"], errors="coerce")
+        df = df.dropna(subset=["bid", "strike"])
+        df = df[df["bid"] >= min_bid]
+        unique_strikes = sorted(df["strike"].unique().astype(int))
+        return unique_strikes
     return []
 
 # Ophalen van gefilterde data
@@ -77,7 +76,7 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
 type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=1)
 
-# Peildatum dropdown met unieke waarden en correcte mapping terug naar datetime
+# Snapshot date filter
 display_dates, actual_dates = get_unique_snapshot_dates("spx_options2")
 if display_dates:
     selected_display_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", display_dates, default=[display_dates[0]])
@@ -86,8 +85,8 @@ else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
 
-# Strike filter
-strikes = get_unique_values("spx_options2", "strike")
+# Strike filter met alleen actieve strikes (bid > 0.01)
+strikes = get_active_strikes("spx_options2", selected_snapshot_dates, min_bid=0.01)
 if strikes and len(strikes) > 0:
     min_strike = min(strikes)
     max_strike = max(strikes)
@@ -95,7 +94,7 @@ if strikes and len(strikes) > 0:
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
-    st.sidebar.write("Debug - No valid strikes found, using default: 5500")
+    st.sidebar.write("Debug - Geen actieve strikes gevonden, gebruik default: 5500")
 
 # Data ophalen
 df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_dates, strike)
