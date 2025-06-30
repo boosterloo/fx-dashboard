@@ -27,7 +27,8 @@ def get_unique_values(table_name, column):
                 return sorted(set(values), key=lambda x: pd.to_datetime(x))
             elif column == "strike":
                 df = pd.DataFrame(response.data)
-                df = df[df["openInterest"] > 0]  # Alleen strikes met open interest
+                if "openInterest" in df.columns:
+                    df = df[df["openInterest"] > 0]  # Alleen strikes met open interest
                 return sorted(df["strike"].dropna().unique().astype(int).tolist())
             else:
                 return sorted(set(values), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
