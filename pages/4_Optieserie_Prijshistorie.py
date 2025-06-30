@@ -4,24 +4,27 @@ import altair as alt
 from supabase import create_client, Client
 import os
 
+# Set page config
 st.set_page_config(page_title="📈 Prijsontwikkeling van een Optieserie", layout="wide")
 
+# Initialize Supabase client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Supabase configuratie ontbreekt.")
+    st.error("Supabase configuratie ontbreekt. Controleer SUPABASE_URL en SUPABASE_KEY.")
     st.stop()
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Fetch all filtered contract symbols in chunks
 @st.cache_data(ttl=3600)
 def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
     offset = 0
     all_symbols = set()
-    st.write(f"Filtering with: type_optie={type_optie}, expiration={expiration}, strike={strike}")
+    st.write(f"Filtering with: type_optie={type_optie}, expiration={expiration}, strike={strike}")  # Debug
     while True:
         try:
-            query = supabase.table(table_name).select("symbol, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("contract_symbol, type, expiration, strike").range(offset, offset + batch_size - 1)
             if type_optie:
                 query = query.eq("type", type_optie)
             if expiration:
@@ -32,7 +35,7 @@ def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, 
             if not response.data:
                 break
             for row in response.data:
-                symbol = row.get("symbol")
+                symbol = row.get("contract_symbol")
                 if symbol:
                     all_symbols.add(symbol)
             offset += batch_size
@@ -41,10 +44,11 @@ def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, 
             break
     return sorted(all_symbols)
 
+# Fetch data for a specific contract_symbol
 @st.cache_data(ttl=3600)
 def fetch_contract_data(table_name, contract_symbol):
     try:
-        response = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility").eq("symbol", contract_symbol).order("snapshot_date").execute()
+        response = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility").eq("contract_symbol", contract_symbol).order("snapshot_date").execute()
         if response.data:
             df = pd.DataFrame(response.data)
             df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
@@ -55,29 +59,37 @@ def fetch_contract_data(table_name, contract_symbol):
 
 st.title("📈 Prijsontwikkeling van een Optieserie")
 
+# Sidebar filters
 st.sidebar.header("🔍 Filters")
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=0)
-expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value="2025-07-31")
+expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value="2023-08-18")  # Aanpassen naar bestaande waarde
 expiration = expiration_input if expiration_input else None
-strike_input = st.sidebar.text_input("Strike (bijv. 5500)", value="5500")
-strike = int(strike_input) if strike_input and strike_input.isdigit() else None
+strike_input = st.sidebar.text_input("Strike (bijv. 617.07)", value="617.07")  # Aanpassen naar bestaande waarde
+strike = float(strike_input) if strike_input and strike_input.replace('.', '').isdigit() else None  # Float voor decimalen
 
+# Cache refresh button
 if st.button("Vernieuw cache"):
     st.cache_data.clear()
 
+# Select contract_symbol
 contract_symbols = get_filtered_contract_symbols("spx_options2", type_optie, expiration, strike)
 if not contract_symbols:
     st.error("Geen optieseries gevonden voor de opgegeven filters.")
+    # Debug: Toon eerste rijen om te controleren
+    response = supabase.table("spx_options2").select("contract_symbol, type, expiration, strike").limit(5).execute()
+    st.write("Eerste 5 rijen uit tabel:", response.data)
     st.stop()
 
-selected_symbol = st.selectbox("Selecteer een optieserie (contractsymbol):", contract_symbols)
+selected_symbol = st.selectbox("Selecteer een optieserie (contract_symbol):", contract_symbols)
 
+# Fetch data
 df = fetch_contract_data("spx_options2", selected_symbol)
 
 if df.empty:
     st.warning("Geen data beschikbaar voor de geselecteerde optieserie.")
     st.stop()
 
+# Plot line charts
 st.subheader(f"Prijsontwikkeling voor: {selected_symbol}")
 
 chart = alt.Chart(df).transform_fold(
@@ -88,10 +100,14 @@ chart = alt.Chart(df).transform_fold(
     y=alt.Y("Prijs:Q", title="Optieprijs"),
     color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
     tooltip=["snapshot_date:T", "Type:N", "Prijs:Q"]
-).properties(height=500, title="Bid, Ask en LastPrice door de tijd")
+).properties(
+    height=500,
+    title="Bid, Ask en LastPrice door de tijd"
+)
 
 st.altair_chart(chart, use_container_width=True)
 
+# Toon ook implied volatility indien beschikbaar
 if "impliedVolatility" in df.columns and df["impliedVolatility"].notna().any():
     st.subheader("Implied Volatility (IV)")
     iv_chart = alt.Chart(df).mark_line(point=True).encode(
@@ -99,8 +115,10 @@ if "impliedVolatility" in df.columns and df["impliedVolatility"].notna().any():
         y=alt.Y("impliedVolatility:Q", title="IV"),
         tooltip=["snapshot_date:T", "impliedVolatility:Q"]
     ).properties(height=300)
+
     st.altair_chart(iv_chart, use_container_width=True)
 
+# Debug info
 st.write("Aantal datapunten:", len(df))
 st.write("Data voorbeeld:")
 st.dataframe(df.head())
