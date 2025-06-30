@@ -19,7 +19,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Fetch unique values for filters with error handling
 @st.cache_data(ttl=3600)
 def get_unique_values(table_name, column):
-    response = supabase.table(table_name).select(column).execute()
+    response = supabase.table(table_name).select(column, "strike", "openInterest").execute()
     if response.data:
         values = [row[column] for row in response.data if row[column] is not None]
         try:
@@ -28,7 +28,7 @@ def get_unique_values(table_name, column):
             elif column == "strike":
                 df = pd.DataFrame(response.data)
                 if "openInterest" in df.columns:
-                    df = df[df["openInterest"] > 0]  # Alleen strikes met open interest
+                    df = df[df["openInterest"].fillna(0) > 0]  # Alleen strikes met open interest > 0
                 return sorted(df["strike"].dropna().unique().astype(int).tolist())
             else:
                 return sorted(set(values), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
