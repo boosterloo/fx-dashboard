@@ -79,7 +79,8 @@ type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], inde
 # Snapshot date filter
 display_dates, actual_dates = get_unique_snapshot_dates("spx_options2")
 if display_dates:
-    selected_display_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", display_dates, default=[display_dates[0]])
+    default_snapshot = display_dates[-1]  # meest recente als default
+    selected_display_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", display_dates, default=[default_snapshot])
     selected_snapshot_dates = [actual_dates[display_dates.index(s)] for s in selected_display_dates if s in display_dates]
 else:
     selected_snapshot_dates = []
@@ -88,7 +89,8 @@ else:
 # Strike filter als dropdown (precieser)
 strikes = get_active_strikes("spx_options2", selected_snapshot_dates, min_bid=0.01)
 if strikes and len(strikes) > 0:
-    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=0)
+    default_strike = 5500 if 5500 in strikes else strikes[0]
+    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=strikes.index(default_strike))
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
@@ -109,7 +111,7 @@ if not df_all_data.empty:
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),
+        color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
         tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
@@ -117,16 +119,17 @@ if not df_all_data.empty:
     )
     st.altair_chart(chart2_main, use_container_width=True)
 
-    # Tweede grafiek als staafdiagram (kortere termijn)
+    # Tweede grafiek: gegroepeerde staven per peildatum
     max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()) if not df_maturity["days_to_maturity"].empty else 21, 21)
     df_short_term = df_maturity[df_maturity["days_to_maturity"] <= max_days]
     if not df_short_term.empty:
+        df_short_term["days_to_maturity"] = df_short_term["days_to_maturity"].astype(str)
         chart2_short = alt.Chart(df_short_term).mark_bar().encode(
-            x=alt.X("days_to_maturity:O", title=f"Dagen tot Maturity (0-{max_days})"),
+            x=alt.X("days_to_maturity:N", title=f"Dagen tot Maturity (0-{max_days})", sort=alt.EncodingSortField(field="days_to_maturity", order="ascending")),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
-            color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),
+            color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
             tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
-        ).interactive().properties(
+        ).properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
             height=400
         )
