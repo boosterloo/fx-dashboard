@@ -19,17 +19,20 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Fetch unique values for filters with error handling
 @st.cache_data(ttl=3600)
 def get_unique_values(table_name, column):
-    response = supabase.table(table_name).select(column, "strike", "openInterest").execute()
+    response = supabase.table(table_name).select("{}".format(column)).execute()
     if response.data:
         values = [row[column] for row in response.data if row[column] is not None]
         try:
             if column == "expiration" or column == "snapshot_date":
                 return sorted(set(values), key=lambda x: pd.to_datetime(x))
             elif column == "strike":
-                df = pd.DataFrame(response.data)
+                # Fetch only strikes with openInterest > 0
+                all_strike_data = supabase.table(table_name).select("strike", "openInterest").execute()
+                df = pd.DataFrame(all_strike_data.data)
                 if "openInterest" in df.columns:
-                    df = df[df["openInterest"].fillna(0) > 0]  # Alleen strikes met open interest > 0
-                return sorted(df["strike"].dropna().unique().astype(int).tolist())
+                    df = df[df["openInterest"].fillna(0) > 0]
+                    return sorted(df["strike"].dropna().unique().astype(int).tolist())
+                return []
             else:
                 return sorted(set(values), key=lambda x: float(x) if isinstance(x, (int, float, str)) and str(x).replace('.', '').replace('-', '').isdigit() else 0)
         except Exception as e:
@@ -92,7 +95,7 @@ if not df_all_data.empty:
 
     df = df[df["snapshot_date"].isin(selected_snapshot_dates)]
 
-    color_scale = alt.Scale(domain=[str(d) for d in selected_snapshot_dates], scheme="category10")
+    color_scale = alt.Scale(domain=[str(d) for d in selected_snapshot_dates], range=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"])
 
     # Eerste grafiek (lijn)
     chart_line = alt.Chart(df).mark_line(point=True).encode(
