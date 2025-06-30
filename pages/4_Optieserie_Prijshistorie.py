@@ -48,7 +48,7 @@ def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, 
 @st.cache_data(ttl=3600)
 def fetch_contract_data(table_name, contract_symbol):
     try:
-        response = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility").eq("contract_symbol", contract_symbol).order("snapshot_date").execute()
+        response = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility").eq("contract_symbol", contract_symbol).order("snapshot_date").execute()
         if response.data:
             df = pd.DataFrame(response.data)
             df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
@@ -61,10 +61,10 @@ st.title("📈 Prijsontwikkeling van een Optieserie")
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
-type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=0)
-expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value="2025-06-20")  # Matcht met tabeldata
+type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)  # Standaard op 'put' gezet
+expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value="2025-06-20")
 expiration = expiration_input if expiration_input else None
-strike_input = st.sidebar.text_input("Strike (bijv. 617.07)", value="600")  # Matcht met tabeldata
+strike_input = st.sidebar.text_input("Strike (bijv. 617.07)", value="618")  # Aangepast naar 618 voor SPX250620P06180000
 strike = float(strike_input) if strike_input and strike_input.replace('.', '').isdigit() else None
 
 # Cache refresh button
@@ -93,7 +93,7 @@ if df.empty:
 st.subheader(f"Prijsontwikkeling voor: {selected_symbol}")
 
 chart = alt.Chart(df).transform_fold(
-    ["bid", "ask", "lastPrice"],
+    ["bid", "ask", "last_price"],  # Aangepast naar last_price
     as_=["Type", "Prijs"]
 ).mark_line(point=True).encode(
     x=alt.X("snapshot_date:T", title="Peildatum"),
@@ -108,12 +108,12 @@ chart = alt.Chart(df).transform_fold(
 st.altair_chart(chart, use_container_width=True)
 
 # Toon ook implied volatility indien beschikbaar
-if "impliedVolatility" in df.columns and df["impliedVolatility"].notna().any():
+if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():  # Aangepast naar implied_volatility
     st.subheader("Implied Volatility (IV)")
     iv_chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("snapshot_date:T", title="Peildatum"),
-        y=alt.Y("impliedVolatility:Q", title="IV"),
-        tooltip=["snapshot_date:T", "impliedVolatility:Q"]
+        y=alt.Y("implied_volatility:Q", title="IV"),  # Aangepast naar implied_volatility
+        tooltip=["snapshot_date:T", "implied_volatility:Q"]
     ).properties(height=300)
 
     st.altair_chart(iv_chart, use_container_width=True)
