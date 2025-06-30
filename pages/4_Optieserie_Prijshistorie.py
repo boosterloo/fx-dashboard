@@ -16,13 +16,13 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch unique values for a column
+# Fetch unique contract symbols
 @st.cache_data(ttl=3600)
-def get_unique_values(table_name, column):
-    response = supabase.table(table_name).select(column).execute()
+def get_contract_symbols(table_name):
+    response = supabase.table(table_name).select("contractSymbol").execute()
     if response.data:
-        values = [row[column] for row in response.data if row[column] is not None]
-        return sorted(list(set(values)))
+        symbols = [row["contractSymbol"] for row in response.data if row.get("contractSymbol")]
+        return sorted(set(symbols))
     return []
 
 # Fetch data for a specific contractSymbol
@@ -38,7 +38,7 @@ def fetch_contract_data(table_name, contract_symbol):
 st.title("📈 Prijsontwikkeling van een Optieserie")
 
 # Select contractSymbol
-contract_symbols = get_unique_values("spx_options2", "contractSymbol")
+contract_symbols = get_contract_symbols("spx_options2")
 if not contract_symbols:
     st.error("Geen optieseries gevonden in de database.")
     st.stop()
