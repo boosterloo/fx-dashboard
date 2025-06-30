@@ -17,6 +17,48 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Fetch all unique strikes
+@st.cache_data(ttl=3600)
+def get_unique_strikes(table_name, batch_size=1000):
+    offset = 0
+    strikes = set()
+    while True:
+        try:
+            query = supabase.table(table_name).select("strike").range(offset, offset + batch_size - 1)
+            response = query.execute()
+            if not response.data:
+                break
+            for row in response.data:
+                strike = row.get("strike")
+                if strike is not None:
+                    strikes.add(float(strike))
+            offset += batch_size
+        except Exception as e:
+            st.error(f"Fout bij ophalen van strikes: {e}")
+            break
+    return sorted(list(strikes))
+
+# Fetch all unique expirations
+@st.cache_data(ttl=3600)
+def get_unique_expirations(table_name, batch_size=1000):
+    offset = 0
+    expirations = set()
+    while True:
+        try:
+            query = supabase.table(table_name).select("expiration").range(offset, offset + batch_size - 1)
+            response = query.execute()
+            if not response.data:
+                break
+            for row in response.data:
+                expiration = row.get("expiration")
+                if expiration:
+                    expirations.add(expiration)
+            offset += batch_size
+        except Exception as e:
+            st.error(f"Fout bij ophalen van expirations: {e}")
+            break
+    return sorted(list(expirations))
+
 # Fetch all available contract symbols
 @st.cache_data(ttl=3600)
 def get_all_contract_symbols(table_name, batch_size=1000):
@@ -74,6 +116,8 @@ def fetch_contract_data(table_name, contract_symbol):
         if response.data:
             df = pd.DataFrame(response.data)
             df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+            # Simuleer onderliggende waarde (bijv. SPX-index), vervang door echte data als beschikbaar
+            df["underlying_price"] = 5000  # Standaardwaarde, pas aan of haal op via API/tabel
             return df.sort_values("snapshot_date")
     except Exception as e:
         st.error(f"Fout bij ophalen van data voor {contract_symbol}: {e}")
@@ -87,10 +131,12 @@ type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)  # Sta
 # Set expiration to today + 7 days (30 June 2025 + 7 days = 7 July 2025)
 today = datetime.now().date()
 expiration_date = today + timedelta(days=7)
-expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value=expiration_date.strftime("%Y-%m-%d"))
+unique_expirations = get_unique_expirations("spx_options2")
+expiration_input = st.sidebar.selectbox("Expiratiedatum (YYYY-MM-DD)", unique_expirations, index=unique_expirations.index(expiration_date.strftime("%Y-%m-%d")) if expiration_date.strftime("%Y-%m-%d") in unique_expirations else 0)
 expiration = expiration_input if expiration_input else None
-strike_input = st.sidebar.text_input("Strike (bijv. 617.07)", value="6000")  # Standaard op 6000
-strike = float(strike_input) if strike_input and strike_input.replace('.', '').isdigit() else None
+unique_strikes = get_unique_strikes("spx_options2")
+strike_input = st.sidebar.selectbox("Strike", unique_strikes, index=unique_strikes.index(6000) if 6000 in unique_strikes else 0)  # Standaard op 6000
+strike = float(strike_input) if strike_input is not None else None
 
 # Cache refresh button
 if st.button("Vernieuw cache"):
@@ -119,10 +165,11 @@ if df.empty:
     st.warning("Geen data beschikbaar voor de geselecteerde optieserie.")
     st.stop()
 
-# Plot line charts
+# Plot line charts with underlying price on second y-axis
 st.subheader(f"Prijsontwikkeling voor: {selected_symbol if selected_symbol else selected_all_symbol}")
 
-chart = alt.Chart(df).transform_fold(
+# Base chart for bid, ask, and last_price
+base = alt.Chart(df).transform_fold(
     ["bid", "ask", "last_price"],
     as_=["Type", "Prijs"]
 ).mark_line(point=True).encode(
@@ -132,8 +179,20 @@ chart = alt.Chart(df).transform_fold(
     tooltip=["snapshot_date:T", "Type:N", "Prijs:Q"]
 ).properties(
     height=500,
-    title="Bid, Ask en LastPrice door de tijd"
+    title="Bid, Ask, LastPrice en Onderliggende Waarde"
 )
+
+# Layer with underlying price on second y-axis
+underlying = alt.Chart(df).mark_line(color="black").encode(
+    x=alt.X("snapshot_date:T"),
+    y=alt.Y("underlying_price:Q", title="Onderliggende Waarde", axis=alt.Axis(orient="right")),
+    tooltip=["snapshot_date:T", "underlying_price:Q"]
+)
+
+# Combine charts
+chart = alt.layer(base, underlying).resolve_scale(
+    y="independent"  # Separate scales for the two y-axes
+).properties(width="container")
 
 st.altair_chart(chart, use_container_width=True)
 
