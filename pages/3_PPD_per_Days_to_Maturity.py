@@ -85,12 +85,10 @@ else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
 
-# Strike filter met alleen actieve strikes (bid > 0.01)
+# Strike filter als dropdown (precieser)
 strikes = get_active_strikes("spx_options2", selected_snapshot_dates, min_bid=0.01)
 if strikes and len(strikes) > 0:
-    min_strike = min(strikes)
-    max_strike = max(strikes)
-    strike = st.sidebar.slider("Strike", min_value=min_strike, max_value=max_strike, value=5500, step=1)
+    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=0)
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
@@ -107,7 +105,7 @@ if not df_all_data.empty:
     df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
 
-    # Grafiek volledig bereik
+    # Grafiek volledig bereik (lijn)
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
         x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
         y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
@@ -119,13 +117,13 @@ if not df_all_data.empty:
     )
     st.altair_chart(chart2_main, use_container_width=True)
 
-    # Korte termijn grafiek
+    # Tweede grafiek als staafdiagram (kortere termijn)
     max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()) if not df_maturity["days_to_maturity"].empty else 21, 21)
     df_short_term = df_maturity[df_maturity["days_to_maturity"] <= max_days]
     if not df_short_term.empty:
-        chart2_short = alt.Chart(df_short_term).mark_line(point=True).encode(
-            x=alt.X("days_to_maturity:Q", title=f"Dagen tot Maturity (0-{max_days})", sort=None),
-            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
+        chart2_short = alt.Chart(df_short_term).mark_bar().encode(
+            x=alt.X("days_to_maturity:O", title=f"Dagen tot Maturity (0-{max_days})"),
+            y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
             color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),
             tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
         ).interactive().properties(
