@@ -16,36 +16,26 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Unieke snapshot_dates met formatting voor dropdown
+# Fetch unique values for filters with error handling
 @st.cache_data(ttl=3600)
-def get_unique_snapshot_dates(table_name):
-    response = supabase.table(table_name).select("snapshot_date").execute()
+def get_unique_values(table_name, column):
+    response = supabase.table(table_name).select(column).execute()
     if response.data:
-        raw_values = [row["snapshot_date"] for row in response.data if row["snapshot_date"] is not None]
-        dt_values = pd.to_datetime(raw_values, utc=True, errors="coerce").dropna()
-        unique_dt_values = sorted(list(set(dt_values)))
-        display_values = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in unique_dt_values]
-        return display_values, unique_dt_values
-    return [], []
-
-# Ophalen van actieve strikes op basis van bid > 0.01 en gekozen snapshot_dates
-@st.cache_data(ttl=3600)
-def get_active_strikes(table_name, snapshot_dates=None, min_bid=0.01):
-    query = supabase.table(table_name).select("strike", "snapshot_date", "bid")
-    if snapshot_dates and len(snapshot_dates) > 0:
-        query = query.in_("snapshot_date", [str(s) for s in snapshot_dates])
-    response = query.execute()
-    if response.data:
-        df = pd.DataFrame(response.data)
-        df["bid"] = pd.to_numeric(df["bid"], errors="coerce")
-        df["strike"] = pd.to_numeric(df["strike"], errors="coerce")
-        df = df.dropna(subset=["bid", "strike"])
-        df = df[df["bid"] >= min_bid]
-        unique_strikes = sorted(df["strike"].unique().astype(int))
-        return unique_strikes
+        values = [row[column] for row in response.data if row[column] is not None]
+        try:
+            if column == "expiration" or column == "snapshot_date":
+                datetime_values = pd.to_datetime(values, utc=True, errors="coerce")
+                return sorted(datetime_values.dropna().unique())
+            elif column == "strike":
+                return sorted(list(set([int(float(x)) for x in values if isinstance(x, (int, float)) and float(x) > 0 and float(x) < 10000])))
+            else:
+                return sorted(values, key=lambda x: float(x) if isinstance(x, (int, float)) else 0)
+        except Exception as e:
+            st.write(f"Debug - Error processing {column} values: {e}")
+            return values
     return []
 
-# Ophalen van gefilterde data
+# Fetch data in chunks with filters
 @st.cache_data(ttl=3600)
 def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike=None, batch_size=1000):
     offset = 0
@@ -65,41 +55,33 @@ def fetch_filtered_data(table_name, type_optie=None, snapshot_dates=None, strike
         offset += batch_size
     if all_data:
         df = pd.DataFrame(all_data)
-        st.write("Debug - Fetched data shape:", df.shape)
         df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
         df["expiration"] = pd.to_datetime(df["expiration"], utc=True, errors="coerce")
         return df.sort_values("snapshot_date")
-    st.write("Debug - No data fetched. Check filters or Supabase connection.")
     return pd.DataFrame()
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters voor PPD per Days to Maturity")
 type_optie = st.sidebar.selectbox("Type optie (Put/Call)", ["call", "put"], index=1)
-
-# Snapshot date filter
-display_dates, actual_dates = get_unique_snapshot_dates("spx_options2")
-if display_dates:
-    default_snapshot = display_dates[-1]  # meest recente als default
-    selected_display_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", display_dates, default=[default_snapshot])
-    selected_snapshot_dates = [actual_dates[display_dates.index(s)] for s in selected_display_dates if s in display_dates]
+snapshot_dates = get_unique_values("spx_options2", "snapshot_date")
+if snapshot_dates:
+    snapshot_dates_sorted = sorted(snapshot_dates, reverse=True)
+    default_snapshot = [snapshot_dates_sorted[0]]
+    selected_snapshot_dates = st.sidebar.multiselect("Selecteer Peildatum(s)", snapshot_dates_sorted, default=default_snapshot)
 else:
     selected_snapshot_dates = []
     st.sidebar.write("Geen peildata beschikbaar.")
-
-# Strike filter als dropdown (precieser)
-strikes = get_active_strikes("spx_options2", selected_snapshot_dates, min_bid=0.01)
+strikes = get_unique_values("spx_options2", "strike")
 if strikes and len(strikes) > 0:
-    default_strike = 5500 if 5500 in strikes else strikes[0]
-    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=strikes.index(default_strike))
+    strike = st.sidebar.selectbox("Strike (alleen actief)", strikes, index=strikes.index(5500) if 5500 in strikes else 0)
     st.sidebar.write(f"Debug - Selected strike: {strike}")
 else:
     strike = 5500
-    st.sidebar.write("Debug - Geen actieve strikes gevonden, gebruik default: 5500")
+    st.sidebar.write("Debug - No valid strikes found, using default: 5500")
 
-# Data ophalen
+# Fetch data with filters
 df_all_data = fetch_filtered_data("spx_options2", type_optie, selected_snapshot_dates, strike)
 
-# Hoofdsectie
 st.header("PPD per Days to Maturity")
 if not df_all_data.empty:
     df_maturity = df_all_data.copy()
@@ -107,11 +89,11 @@ if not df_all_data.empty:
     df_maturity = df_maturity[df_maturity["days_to_maturity"] > 0]
     df_maturity["ppd"] = df_maturity["bid"] / df_maturity["days_to_maturity"].replace(0, 0.01)
 
-    # Grafiek volledig bereik (lijn)
+    # Main chart (lijn)
     chart2_main = alt.Chart(df_maturity).mark_line(point=True).encode(
-        x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity", sort=None),
-        y=alt.Y("ppd:Q", title="Premium per Dag (PPD)", scale=alt.Scale(zero=True, nice=True)),
-        color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
+        x=alt.X("days_to_maturity:Q", title="Dagen tot Maturity"),
+        y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
+        color=alt.Color("snapshot_date:T", title="Peildatum", scale=alt.Scale(scheme="category10")),
         tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
     ).interactive().properties(
         title=f"PPD per Dag tot Maturity (Overzicht) — {type_optie.upper()} | Strike {strike}",
@@ -119,16 +101,20 @@ if not df_all_data.empty:
     )
     st.altair_chart(chart2_main, use_container_width=True)
 
-    # Tweede grafiek: gegroepeerde staven per peildatum
-    max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()) if not df_maturity["days_to_maturity"].empty else 21, 21)
+    # Tweede grafiek (balken per dag met peildatum als kleur)
+    max_days = st.sidebar.slider("Max Days to Maturity (Tweede Grafiek)", 1, int(df_maturity["days_to_maturity"].max()), 21)
     df_short_term = df_maturity[df_maturity["days_to_maturity"] <= max_days]
+
     if not df_short_term.empty:
         df_short_term["days_to_maturity"] = df_short_term["days_to_maturity"].astype(str)
+        df_short_term["snapshot_display"] = df_short_term["snapshot_date"].dt.strftime("%Y-%m-%d")
+
         chart2_short = alt.Chart(df_short_term).mark_bar().encode(
             x=alt.X("days_to_maturity:N", title=f"Dagen tot Maturity (0-{max_days})", sort=alt.EncodingSortField(field="days_to_maturity", order="ascending")),
             y=alt.Y("ppd:Q", title="Premium per Dag (PPD)"),
-            color=alt.Color("snapshot_date:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
-            tooltip=["snapshot_date", "days_to_maturity", "ppd", "strike"]
+            color=alt.Color("snapshot_display:N", title="Peildatum", scale=alt.Scale(scheme="category10")),
+            column=alt.Column("snapshot_display:N", title="Peildatum"),
+            tooltip=["snapshot_display", "days_to_maturity", "ppd", "strike"]
         ).properties(
             title=f"PPD per Dag tot Maturity (0-{max_days} dagen)",
             height=400
@@ -137,9 +123,8 @@ if not df_all_data.empty:
     else:
         st.write(f"Geen data beschikbaar voor dagen tot maturity ≤ {max_days}.")
 
-    # Tabel en debug info
     st.write("Aantal rijen na filtering:", len(df_maturity))
-    st.write(f"Aantal rijen met ongeldige PPD (NaN): {df_maturity['ppd'].isna().sum()}")
+    st.write("Aantal rijen met ongeldige PPD (NaN):", df_maturity["ppd"].isna().sum())
     st.write("Unieke days_to_maturity waarden:", sorted(df_maturity["days_to_maturity"].unique()))
     st.write("Gefilterde data:", df_maturity)
 
