@@ -16,8 +16,8 @@ with col1:
         switch_page("1_FX_Rates")
 
 with col2:
-    if st.button("📈 Naar SPX Opties"):
-        switch_page("2_SPX_Opties")
+    if st.button("📈 PPD_per_Days_to_Maturity"):
+        switch_page("3_PPD_per_Days_to_Maturity.py")
 
 st.markdown("---")
 st.markdown("🧪 Macro, Indexen en Sectoren volgen binnenkort.")
