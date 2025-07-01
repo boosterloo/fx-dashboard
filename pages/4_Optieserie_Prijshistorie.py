@@ -161,7 +161,7 @@ if "implied_volatility" in df.columns and df["implied_volatility"].notna().any()
 st.subheader("Analyse van Optiewaarden")
 
 # Check welke kolommen aanwezig zijn voor analyse
-aanalyse_kolommen = ["snapshot_date"]
+analyse_kolommen = ["snapshot_date"]
 for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
     if kolom in df.columns:
         df[kolom] = pd.to_numeric(df[kolom], errors="coerce")
