@@ -63,10 +63,10 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
         df = df.sort_values("snapshot_date")
     return df
 
-st.title("📈 Prijsontwikkeling van een Optieserie")
+st.title("\U0001F4C8 Prijsontwikkeling van een Optieserie")
 
 # Sidebar filters
-st.sidebar.header("🔍 Filters")
+st.sidebar.header("\U0001F50D Filters")
 defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
 # Haal beschikbare expiraties en strikes op
@@ -165,10 +165,11 @@ analyse_kolommen = ["snapshot_date"]
 for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
     if kolom in df.columns:
         df[kolom] = pd.to_numeric(df[kolom], errors="coerce")
-        analyse_kolommen.append(kolom)
+        if df[kolom].notna().any():
+            analyse_kolommen.append(kolom)
 
 if len(analyse_kolommen) > 1:
-    analysis_df = df[analyse_kolommen].dropna()
+    analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
 
     analysis_chart = alt.Chart(analysis_df).transform_fold(
         analyse_kolommen[1:],  # alle behalve snapshot_date
