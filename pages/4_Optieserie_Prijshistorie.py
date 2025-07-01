@@ -160,7 +160,14 @@ if "implied_volatility" in df.columns and df["implied_volatility"].notna().any()
 # Extra analyse grafieken
 st.subheader("Analyse van Optiewaarden")
 
-analysis_chart = alt.Chart(df).transform_fold(
+# Convert to numeric and drop missing values
+for col in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+analysis_df = df[["snapshot_date", "intrinsieke_waarde", "tijdswaarde", "ppd"]].dropna()
+
+analysis_chart = alt.Chart(analysis_df).transform_fold(
     ["intrinsieke_waarde", "tijdswaarde", "ppd"],
     as_=["Soort", "Waarde"]
 ).mark_line(point=True).encode(
