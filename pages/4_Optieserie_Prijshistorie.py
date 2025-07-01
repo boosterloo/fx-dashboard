@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta
 
 # Set page config
-st.set_page_config(page_title="📈 Prijsontwikkeling van een Optieserie", layout="wide")
+st.set_page_config(page_title="\ud83d\udcc8 Prijsontwikkeling van een Optieserie", layout="wide")
 
 # Initialize Supabase client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -63,10 +63,10 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
         df = df.sort_values("snapshot_date")
     return df
 
-st.title("📈 Prijsontwikkeling van een Optieserie")
+st.title("\ud83d\udcc8 Prijsontwikkeling van een Optieserie")
 
 # Sidebar filters
-st.sidebar.header("🔍 Filters")
+st.sidebar.header("\ud83d\udd0d Filters")
 defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
 # Haal beschikbare expiraties en strikes op
@@ -105,9 +105,9 @@ chart = alt.Chart(df).transform_fold(
 )
 
 text = alt.Chart(df).transform_fold(
-    ["bid", "ask", "last_price"],
+    ["last_price"],
     as_=["Type", "Prijs"]
-).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=12).encode(
+).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=14, fontWeight="bold").encode(
     x="snapshot_date:T",
     y="Prijs:Q",
     text="Prijs:Q",
@@ -120,7 +120,7 @@ price_chart = chart
 underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
     y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
 )
-underlying_text = base.mark_text(align="right", dx=5, dy=-10, fontSize=12).encode(
+underlying_text = base.mark_text(align="center", dx=0, dy=-15, fontSize=12).encode(
     y="underlying_price:Q",
     text="underlying_price:Q"
 )
@@ -134,15 +134,26 @@ st.altair_chart(combined_chart, use_container_width=True)
 # Toon ook implied volatility en vix indien beschikbaar
 if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
     st.subheader("Implied Volatility (IV) en VIX")
-    
-    iv_chart = alt.Chart(df).transform_fold(
-        ["implied_volatility", "vix"],
+
+    base_iv = alt.Chart(df).encode(x=alt.X("snapshot_date:T", title="Peildatum"))
+    iv_line = base_iv.transform_fold(
+        ["implied_volatility"],
         as_=["Type", "Waarde"]
-    ).mark_line(point=alt.OverlayMarkDef(size=80)).encode(
-        x=alt.X("snapshot_date:T", title="Peildatum"),
-        y=alt.Y("Waarde:Q", title="Waarde"),
-        color=alt.Color("Type:N", title="Maatstaf"),
+    ).mark_line(point=alt.OverlayMarkDef(size=80), color="#1f77b4").encode(
+        y=alt.Y("Waarde:Q", title="Implied Volatility"),
         tooltip=["snapshot_date:T", "Type:N", "Waarde:Q"]
+    )
+
+    vix_line = base_iv.transform_fold(
+        ["vix"],
+        as_=["Type", "Waarde"]
+    ).mark_line(point=alt.OverlayMarkDef(size=80), color="#aec7e8", strokeDash=[4,2]).encode(
+        y=alt.Y("Waarde:Q", title="VIX", axis=alt.Axis(titleColor="#aec7e8")),
+        tooltip=["snapshot_date:T", "Type:N", "Waarde:Q"]
+    )
+
+    iv_chart = alt.layer(iv_line, vix_line).resolve_scale(
+        y="independent"
     ).properties(height=300)
 
     st.altair_chart(iv_chart, use_container_width=True)
