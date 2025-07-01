@@ -3,7 +3,6 @@ import pandas as pd
 import altair as alt
 from supabase import create_client, Client
 import os
-from datetime import datetime, timedelta
 
 # Set page config
 st.set_page_config(page_title="📈 Prijsontwikkeling van een Optieserie", layout="wide")
@@ -17,160 +16,54 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Fetch all unique strikes
+# Fetch data for specific filters in chunks
 @st.cache_data(ttl=3600)
-def get_unique_strikes(table_name, batch_size=1000):
+def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
     offset = 0
-    strikes = set()
+    all_data = []
     while True:
         try:
-            query = supabase.table(table_name).select("strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility, type, expiration, strike").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
             for row in response.data:
-                strike = row.get("strike")
-                if strike is not None:
-                    strikes.add(float(strike))
+                if (type_optie is None or row.get("type") == type_optie) and \
+                   (expiration is None or row.get("expiration") == expiration) and \
+                   (strike is None or row.get("strike") == strike):
+                    all_data.append(row)
             offset += batch_size
         except Exception as e:
-            st.error(f"Fout bij ophalen van strikes: {e}")
+            st.error(f"Fout bij ophalen van data: {e}")
             break
-    return sorted(list(strikes))
-
-# Fetch all unique expirations
-@st.cache_data(ttl=3600)
-def get_unique_expirations(table_name, batch_size=1000):
-    offset = 0
-    expirations = set()
-    while True:
-        try:
-            query = supabase.table(table_name).select("expiration").range(offset, offset + batch_size - 1)
-            response = query.execute()
-            if not response.data:
-                break
-            for row in response.data:
-                expiration = row.get("expiration")
-                if expiration:
-                    expirations.add(expiration)
-            offset += batch_size
-        except Exception as e:
-            st.error(f"Fout bij ophalen van expirations: {e}")
-            break
-    return sorted(list(expirations))
-
-# Fetch all available contract symbols
-@st.cache_data(ttl=3600)
-def get_all_contract_symbols(table_name, batch_size=1000):
-    offset = 0
-    all_symbols = set()
-    while True:
-        try:
-            query = supabase.table(table_name).select("contract_symbol").range(offset, offset + batch_size - 1)
-            response = query.execute()
-            if not response.data:
-                break
-            for row in response.data:
-                symbol = row.get("contract_symbol")
-                if symbol:
-                    all_symbols.add(symbol)
-            offset += batch_size
-        except Exception as e:
-            st.error(f"Fout bij ophalen van contractsymbolen: {e}")
-            break
-    return sorted(all_symbols)
-
-# Fetch all filtered contract symbols in chunks
-@st.cache_data(ttl=3600)
-def get_filtered_contract_symbols(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
-    offset = 0
-    all_symbols = set()
-    st.write(f"Filtering with: type_optie={type_optie}, expiration={expiration}, strike={strike}")  # Debug
-    while True:
-        try:
-            query = supabase.table(table_name).select("contract_symbol, type, expiration, strike").range(offset, offset + batch_size - 1)
-            if type_optie:
-                query = query.eq("type", type_optie)
-            if expiration:
-                query = query.eq("expiration", expiration)
-            if strike:
-                query = query.eq("strike", strike)
-            response = query.execute()
-            if not response.data:
-                break
-            for row in response.data:
-                symbol = row.get("contract_symbol")
-                if symbol:
-                    all_symbols.add(symbol)
-            offset += batch_size
-        except Exception as e:
-            st.error(f"Fout bij ophalen van contractsymbol: {e}")
-            break
-    return sorted(all_symbols)
-
-# Fetch data for a specific contract_symbol
-@st.cache_data(ttl=3600)
-def fetch_contract_data(table_name, contract_symbol):
-    try:
-        response = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility").eq("contract_symbol", contract_symbol).order("snapshot_date").execute()
-        if response.data:
-            df = pd.DataFrame(response.data)
-            df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
-            # Simuleer onderliggende waarde (bijv. SPX-index), vervang door echte data als beschikbaar
-            df["underlying_price"] = 5000  # Standaardwaarde, pas aan of haal op via API/tabel
-            return df.sort_values("snapshot_date")
-    except Exception as e:
-        st.error(f"Fout bij ophalen van data voor {contract_symbol}: {e}")
-    return pd.DataFrame()
+    df = pd.DataFrame(all_data)
+    if not df.empty and "snapshot_date" in df.columns:
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+        df = df.sort_values("snapshot_date")
+    return df
 
 st.title("📈 Prijsontwikkeling van een Optieserie")
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
-type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)  # Standaard op 'put'
-# Set expiration to today + 7 days (30 June 2025 + 7 days = 7 July 2025)
-today = datetime.now().date()
-expiration_date = today + timedelta(days=7)
-unique_expirations = get_unique_expirations("spx_options2")
-expiration_input = st.sidebar.selectbox("Expiratiedatum (YYYY-MM-DD)", unique_expirations, index=unique_expirations.index(expiration_date.strftime("%Y-%m-%d")) if expiration_date.strftime("%Y-%m-%d") in unique_expirations else 0)
+type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=0)
+expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)")
 expiration = expiration_input if expiration_input else None
-unique_strikes = get_unique_strikes("spx_options2")
-strike_input = st.sidebar.selectbox("Strike", unique_strikes, index=unique_strikes.index(6000) if 6000 in unique_strikes else 0)  # Standaard op 6000
-strike = float(strike_input) if strike_input is not None else None
+strike_input = st.sidebar.text_input("Strike (bijv. 5500)")
+strike = int(strike_input) if strike_input and strike_input.isdigit() else None
 
-# Cache refresh button
-if st.button("Vernieuw cache"):
-    st.cache_data.clear()
-
-# Show all available contract symbols as a separate dropdown
-all_symbols = get_all_contract_symbols("spx_options2")
-st.sidebar.header("📋 Alle beschikbare opties")
-selected_all_symbol = st.sidebar.selectbox("Kies uit alle opties:", all_symbols, key="all_symbols")
-
-# Select contract_symbol based on filters
-contract_symbols = get_filtered_contract_symbols("spx_options2", type_optie, expiration, strike)
-if not contract_symbols:
-    st.error("Geen optieseries gevonden voor de opgegeven filters.")
-    # Debug: Toon eerste rijen om te controleren
-    response = supabase.table("spx_options2").select("contract_symbol, type, expiration, strike").limit(5).execute()
-    st.write("Eerste 5 rijen uit tabel:", response.data)
-    st.stop()
-
-selected_symbol = st.selectbox("Selecteer een optieserie (contract_symbol):", contract_symbols)
-
-# Fetch data
-df = fetch_contract_data("spx_options2", selected_symbol if selected_symbol else selected_all_symbol)
+# Fetch data based on filters
+df = fetch_filtered_option_data("spx_options2", type_optie, expiration, strike)
 
 if df.empty:
-    st.warning("Geen data beschikbaar voor de geselecteerde optieserie.")
+    st.error("Geen data gevonden voor de opgegeven filters.")
     st.stop()
 
-# Plot line charts with underlying price on second y-axis
-st.subheader(f"Prijsontwikkeling voor: {selected_symbol if selected_symbol else selected_all_symbol}")
+# Plot line charts
+st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
 
-# Base chart for bid, ask, and last_price
-base = alt.Chart(df).transform_fold(
-    ["bid", "ask", "last_price"],
+chart = alt.Chart(df).transform_fold(
+    ["bid", "ask", "lastPrice"],
     as_=["Type", "Prijs"]
 ).mark_line(point=True).encode(
     x=alt.X("snapshot_date:T", title="Peildatum"),
@@ -179,30 +72,18 @@ base = alt.Chart(df).transform_fold(
     tooltip=["snapshot_date:T", "Type:N", "Prijs:Q"]
 ).properties(
     height=500,
-    title="Bid, Ask, LastPrice en Onderliggende Waarde"
+    title="Bid, Ask en LastPrice door de tijd"
 )
-
-# Layer with underlying price on second y-axis
-underlying = alt.Chart(df).mark_line(color="black").encode(
-    x=alt.X("snapshot_date:T"),
-    y=alt.Y("underlying_price:Q", title="Onderliggende Waarde", axis=alt.Axis(orient="right")),
-    tooltip=["snapshot_date:T", "underlying_price:Q"]
-)
-
-# Combine charts
-chart = alt.layer(base, underlying).resolve_scale(
-    y="independent"  # Separate scales for the two y-axes
-).properties(width="container")
 
 st.altair_chart(chart, use_container_width=True)
 
 # Toon ook implied volatility indien beschikbaar
-if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
+if "impliedVolatility" in df.columns and df["impliedVolatility"].notna().any():
     st.subheader("Implied Volatility (IV)")
     iv_chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("snapshot_date:T", title="Peildatum"),
-        y=alt.Y("implied_volatility:Q", title="IV"),
-        tooltip=["snapshot_date:T", "implied_volatility:Q"]
+        y=alt.Y("impliedVolatility:Q", title="IV"),
+        tooltip=["snapshot_date:T", "impliedVolatility:Q"]
     ).properties(height=300)
 
     st.altair_chart(iv_chart, use_container_width=True)
