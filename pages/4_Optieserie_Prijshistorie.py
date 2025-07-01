@@ -168,7 +168,7 @@ for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
         if df[kolom].notna().any():
             analyse_kolommen.append(kolom)
 
-if len(analyse_kolommen) > 1:
+if len(analyse_kolommen) > 1 and len(analyse_kolommen[1:]) > 0:
     analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
     if not analysis_df.empty:
         analysis_chart = alt.Chart(analysis_df).transform_fold(
