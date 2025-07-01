@@ -44,7 +44,7 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
     all_data = []
     while True:
         try:
-            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, type, expiration, strike").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
@@ -85,13 +85,16 @@ if df.empty:
     st.error("Geen data gevonden voor de opgegeven filters.")
     st.stop()
 
+# Format datum
+df["formatted_date"] = df["snapshot_date"].dt.strftime("%Y-%m-%d")
+
 # Plot line charts
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
 
 chart = alt.Chart(df).transform_fold(
     ["bid", "ask", "last_price"],
     as_=["Type", "Prijs"]
-).mark_line(point=True).encode(
+).mark_line(point=alt.OverlayMarkDef(filled=False)).encode(
     x=alt.X("snapshot_date:T", title="Peildatum"),
     y=alt.Y("Prijs:Q", title="Optieprijs"),
     color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
@@ -101,7 +104,22 @@ chart = alt.Chart(df).transform_fold(
     title="Bid, Ask en LastPrice door de tijd"
 )
 
-st.altair_chart(chart, use_container_width=True)
+text = chart.mark_text(align="left", baseline="middle", dx=5).encode(
+    text="Prijs:Q"
+)
+
+# Tweede y-as voor underlying
+base = alt.Chart(df).encode(x=alt.X("snapshot_date:T", title="Peildatum"))
+price_chart = chart
+underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
+    y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
+)
+
+combined_chart = alt.layer(price_chart, text, underlying).resolve_scale(
+    y="independent"
+)
+
+st.altair_chart(combined_chart, use_container_width=True)
 
 # Toon ook implied volatility indien beschikbaar
 if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
