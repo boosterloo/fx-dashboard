@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 from supabase import create_client, Client
 import os
+from datetime import datetime, timedelta
 
 # Set page config
 st.set_page_config(page_title="📈 Prijsontwikkeling van een Optieserie", layout="wide")
@@ -23,7 +24,7 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
     all_data = []
     while True:
         try:
-            query = supabase.table(table_name).select("snapshot_date, bid, ask, lastPrice, impliedVolatility, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, impliedVolatility, type, expiration, strike").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
@@ -46,10 +47,11 @@ st.title("📈 Prijsontwikkeling van een Optieserie")
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
-type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=0)
-expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)")
+defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)
+expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value=defaultexp)
 expiration = expiration_input if expiration_input else None
-strike_input = st.sidebar.text_input("Strike (bijv. 5500)")
+strike_input = st.sidebar.text_input("Strike (bijv. 5500)", value="5500")
 strike = int(strike_input) if strike_input and strike_input.isdigit() else None
 
 # Fetch data based on filters
@@ -63,7 +65,7 @@ if df.empty:
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
 
 chart = alt.Chart(df).transform_fold(
-    ["bid", "ask", "lastPrice"],
+    ["bid", "ask", "last_price"],
     as_=["Type", "Prijs"]
 ).mark_line(point=True).encode(
     x=alt.X("snapshot_date:T", title="Peildatum"),
