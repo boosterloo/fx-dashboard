@@ -44,7 +44,7 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
     all_data = []
     while True:
         try:
-            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, vix, type, expiration, strike").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
@@ -94,7 +94,7 @@ st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
 chart = alt.Chart(df).transform_fold(
     ["bid", "ask", "last_price"],
     as_=["Type", "Prijs"]
-).mark_line(point=alt.OverlayMarkDef(filled=False)).encode(
+).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
     x=alt.X("snapshot_date:T", title="Peildatum"),
     y=alt.Y("Prijs:Q", title="Optieprijs"),
     color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
@@ -104,8 +104,14 @@ chart = alt.Chart(df).transform_fold(
     title="Bid, Ask en LastPrice door de tijd"
 )
 
-text = chart.mark_text(align="left", baseline="middle", dx=5).encode(
-    text="Prijs:Q"
+text = alt.Chart(df).transform_fold(
+    ["bid", "ask", "last_price"],
+    as_=["Type", "Prijs"]
+).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=12).encode(
+    x="snapshot_date:T",
+    y="Prijs:Q",
+    text="Prijs:Q",
+    color=alt.Color("Type:N", scale=alt.Scale(scheme="category10"))
 )
 
 # Tweede y-as voor underlying
@@ -114,20 +120,29 @@ price_chart = chart
 underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
     y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
 )
+underlying_text = base.mark_text(align="right", dx=5, dy=-10, fontSize=12).encode(
+    y="underlying_price:Q",
+    text="underlying_price:Q"
+)
 
-combined_chart = alt.layer(price_chart, text, underlying).resolve_scale(
+combined_chart = alt.layer(price_chart, text, underlying, underlying_text).resolve_scale(
     y="independent"
 )
 
 st.altair_chart(combined_chart, use_container_width=True)
 
-# Toon ook implied volatility indien beschikbaar
+# Toon ook implied volatility en vix indien beschikbaar
 if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
-    st.subheader("Implied Volatility (IV)")
-    iv_chart = alt.Chart(df).mark_line(point=True).encode(
+    st.subheader("Implied Volatility (IV) en VIX")
+    
+    iv_chart = alt.Chart(df).transform_fold(
+        ["implied_volatility", "vix"],
+        as_=["Type", "Waarde"]
+    ).mark_line(point=alt.OverlayMarkDef(size=80)).encode(
         x=alt.X("snapshot_date:T", title="Peildatum"),
-        y=alt.Y("implied_volatility:Q", title="IV"),
-        tooltip=["snapshot_date:T", "implied_volatility:Q"]
+        y=alt.Y("Waarde:Q", title="Waarde"),
+        color=alt.Color("Type:N", title="Maatstaf"),
+        tooltip=["snapshot_date:T", "Type:N", "Waarde:Q"]
     ).properties(height=300)
 
     st.altair_chart(iv_chart, use_container_width=True)
