@@ -92,7 +92,7 @@ df["formatted_date"] = df["snapshot_date"].dt.strftime("%Y-%m-%d")
 underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
 df["intrinsieke_waarde"] = df.apply(lambda row: max(row["strike"] - row["underlying_price"], 0) if row["type"] == "put" else max(row["underlying_price"] - row["strike"], 0), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
-df["ppd"] = df["last_price"] / ((pd.to_datetime(df["expiration"]) - df["snapshot_date"]).dt.days + 0.01)
+df["ppd"] = df["last_price"] / ((pd.to_datetime(df["expiration"]) - pd.to_datetime(df["snapshot_date"])).dt.days + 0.01)
 
 # Plot line charts
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
@@ -147,7 +147,7 @@ if "implied_volatility" in df.columns and df["implied_volatility"].notna().any()
         tooltip=["snapshot_date:T", "implied_volatility"]
     )
 
-    vix_line = base_iv.mark_line(strokeDash=[4,2], point=True, color="#aec7e8").encode(
+    vix_line = base_iv.mark_line(strokeDash=[4,2], point=True, color="#ff7f0e").encode(
         y=alt.Y("vix:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(zero=False)),
         tooltip=["snapshot_date:T", "vix"]
     )
