@@ -17,6 +17,17 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Haal unieke expiraties en strikes op
+@st.cache_data(ttl=3600)
+def get_unique_values(table_name, column):
+    try:
+        response = supabase.table(table_name).select(column).execute()
+        values = list(set(item[column] for item in response.data if column in item))
+        return sorted(values)
+    except Exception as e:
+        st.warning(f"Fout bij ophalen van waarden voor {column}: {e}")
+        return []
+
 # Fetch data for specific filters in chunks
 @st.cache_data(ttl=3600)
 def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
@@ -24,7 +35,7 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
     all_data = []
     while True:
         try:
-            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, impliedVolatility, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, type, expiration, strike").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
@@ -48,11 +59,15 @@ st.title("📈 Prijsontwikkeling van een Optieserie")
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
 defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+# Haal beschikbare expiraties en strikes op
+expirations = get_unique_values("spx_options2", "expiration")
+strikes = get_unique_values("spx_options2", "strike")
+
+# Filters
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)
-expiration_input = st.sidebar.text_input("Expiratiedatum (YYYY-MM-DD)", value=defaultexp)
-expiration = expiration_input if expiration_input else None
-strike_input = st.sidebar.text_input("Strike (bijv. 5500)", value="5500")
-strike = int(strike_input) if strike_input and strike_input.isdigit() else None
+expiration = st.sidebar.selectbox("Expiratiedatum", expirations, index=0 if defaultexp not in expirations else expirations.index(defaultexp)) if expirations else None
+strike = st.sidebar.selectbox("Strike (bijv. 5500)", strikes, index=0 if 5500 not in strikes else strikes.index(5500)) if strikes else None
 
 # Fetch data based on filters
 df = fetch_filtered_option_data("spx_options2", type_optie, expiration, strike)
@@ -80,12 +95,12 @@ chart = alt.Chart(df).transform_fold(
 st.altair_chart(chart, use_container_width=True)
 
 # Toon ook implied volatility indien beschikbaar
-if "impliedVolatility" in df.columns and df["impliedVolatility"].notna().any():
+if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
     st.subheader("Implied Volatility (IV)")
     iv_chart = alt.Chart(df).mark_line(point=True).encode(
         x=alt.X("snapshot_date:T", title="Peildatum"),
-        y=alt.Y("impliedVolatility:Q", title="IV"),
-        tooltip=["snapshot_date:T", "impliedVolatility:Q"]
+        y=alt.Y("implied_volatility:Q", title="IV"),
+        tooltip=["snapshot_date:T", "implied_volatility:Q"]
     ).properties(height=300)
 
     st.altair_chart(iv_chart, use_container_width=True)
