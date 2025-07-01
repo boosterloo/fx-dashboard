@@ -160,27 +160,32 @@ if "implied_volatility" in df.columns and df["implied_volatility"].notna().any()
 # Extra analyse grafieken
 st.subheader("Analyse van Optiewaarden")
 
-# Convert to numeric and drop missing values
-for col in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+# Check welke kolommen aanwezig zijn voor analyse
+aanalyse_kolommen = ["snapshot_date"]
+for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
+    if kolom in df.columns:
+        df[kolom] = pd.to_numeric(df[kolom], errors="coerce")
+        analyse_kolommen.append(kolom)
 
-analysis_df = df[["snapshot_date", "intrinsieke_waarde", "tijdswaarde", "ppd"]].dropna()
+if len(analyse_kolommen) > 1:
+    analysis_df = df[analyse_kolommen].dropna()
 
-analysis_chart = alt.Chart(analysis_df).transform_fold(
-    ["intrinsieke_waarde", "tijdswaarde", "ppd"],
-    as_=["Soort", "Waarde"]
-).mark_line(point=True).encode(
-    x=alt.X("snapshot_date:T", title="Peildatum"),
-    y=alt.Y("Waarde:Q", title="Waarde"),
-    color=alt.Color("Soort:N"),
-    tooltip=["snapshot_date:T", "Soort", "Waarde"]
-).properties(
-    height=400,
-    title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
-)
+    analysis_chart = alt.Chart(analysis_df).transform_fold(
+        analyse_kolommen[1:],  # alle behalve snapshot_date
+        as_=["Soort", "Waarde"]
+    ).mark_line(point=True).encode(
+        x=alt.X("snapshot_date:T", title="Peildatum"),
+        y=alt.Y("Waarde:Q", title="Waarde"),
+        color=alt.Color("Soort:N"),
+        tooltip=["snapshot_date:T", "Soort", "Waarde"]
+    ).properties(
+        height=400,
+        title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
+    )
 
-st.altair_chart(analysis_chart, use_container_width=True)
+    st.altair_chart(analysis_chart, use_container_width=True)
+else:
+    st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
 
 # Debug info
 st.write("Aantal datapunten:", len(df))
