@@ -17,16 +17,25 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Haal unieke expiraties en strikes op
+# Haal unieke expiraties en strikes op in batches
 @st.cache_data(ttl=3600)
-def get_unique_values(table_name, column):
-    try:
-        response = supabase.table(table_name).select(column).execute()
-        values = list(set(item[column] for item in response.data if column in item))
-        return sorted(values)
-    except Exception as e:
-        st.warning(f"Fout bij ophalen van waarden voor {column}: {e}")
-        return []
+def get_unique_values_chunked(table_name, column, batch_size=1000):
+    offset = 0
+    all_values = set()
+    while True:
+        try:
+            query = supabase.table(table_name).select(column).range(offset, offset + batch_size - 1)
+            response = query.execute()
+            if not response.data:
+                break
+            for row in response.data:
+                if column in row:
+                    all_values.add(row[column])
+            offset += batch_size
+        except Exception as e:
+            st.warning(f"Fout bij ophalen van waarden voor {column}: {e}")
+            break
+    return sorted(all_values)
 
 # Fetch data for specific filters in chunks
 @st.cache_data(ttl=3600)
@@ -61,8 +70,8 @@ st.sidebar.header("🔍 Filters")
 defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
 # Haal beschikbare expiraties en strikes op
-expirations = get_unique_values("spx_options2", "expiration")
-strikes = get_unique_values("spx_options2", "strike")
+expirations = get_unique_values_chunked("spx_options2", "expiration")
+strikes = get_unique_values_chunked("spx_options2", "strike")
 
 # Filters
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)
