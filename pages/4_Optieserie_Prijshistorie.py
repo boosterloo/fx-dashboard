@@ -93,7 +93,8 @@ underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns
 expiration_converted = pd.to_datetime(df["expiration"].iloc[0], errors="coerce")
 df["intrinsieke_waarde"] = df.apply(lambda row: max(row["strike"] - row["underlying_price"], 0) if row["type"] == "put" else max(row["underlying_price"] - row["strike"], 0), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
-df["ppd"] = df["last_price"] / ((expiration_converted - df["snapshot_date"]).dt.days + 0.01)
+if "ppd" not in df.columns:
+    df["ppd"] = df["last_price"] / ((expiration_converted - df["snapshot_date"]).dt.days + 0.01)
 
 # Plot line charts
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
@@ -114,7 +115,7 @@ chart = alt.Chart(df).transform_fold(
 text = alt.Chart(df).transform_fold(
     ["last_price"],
     as_=["Type", "Prijs"]
-).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=14, fontWeight="bold").encode(
+).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=16, fontWeight="bold").encode(
     x="snapshot_date:T",
     y="Prijs:Q",
     text="Prijs:Q",
