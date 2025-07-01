@@ -88,6 +88,12 @@ if df.empty:
 # Format datum
 df["formatted_date"] = df["snapshot_date"].dt.strftime("%Y-%m-%d")
 
+# Bereken aanvullende metrics
+underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
+df["intrinsieke_waarde"] = df.apply(lambda row: max(row["strike"] - row["underlying_price"], 0) if row["type"] == "put" else max(row["underlying_price"] - row["strike"], 0), axis=1)
+df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
+df["ppd"] = df["last_price"] / ((pd.to_datetime(df["expiration"]) - df["snapshot_date"]).dt.days + 0.01)
+
 # Plot line charts
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
 
@@ -131,25 +137,19 @@ combined_chart = alt.layer(price_chart, text, underlying, underlying_text).resol
 
 st.altair_chart(combined_chart, use_container_width=True)
 
-# Toon ook implied volatility en vix indien beschikbaar
+# Implied Volatility + VIX
 if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
     st.subheader("Implied Volatility (IV) en VIX")
 
     base_iv = alt.Chart(df).encode(x=alt.X("snapshot_date:T", title="Peildatum"))
-    iv_line = base_iv.transform_fold(
-        ["implied_volatility"],
-        as_=["Type", "Waarde"]
-    ).mark_line(point=alt.OverlayMarkDef(size=80), color="#1f77b4").encode(
-        y=alt.Y("Waarde:Q", title="Implied Volatility"),
-        tooltip=["snapshot_date:T", "Type:N", "Waarde:Q"]
+    iv_line = base_iv.mark_line(point=True, color="#1f77b4").encode(
+        y=alt.Y("implied_volatility:Q", title="Implied Volatility"),
+        tooltip=["snapshot_date:T", "implied_volatility"]
     )
 
-    vix_line = base_iv.transform_fold(
-        ["vix"],
-        as_=["Type", "Waarde"]
-    ).mark_line(point=alt.OverlayMarkDef(size=80), color="#aec7e8", strokeDash=[4,2]).encode(
-        y=alt.Y("Waarde:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(zero=False)),
-        tooltip=["snapshot_date:T", "Type:N", "Waarde:Q"]
+    vix_line = base_iv.mark_line(strokeDash=[4,2], point=True, color="#aec7e8").encode(
+        y=alt.Y("vix:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(zero=False)),
+        tooltip=["snapshot_date:T", "vix"]
     )
 
     iv_chart = alt.layer(iv_line, vix_line).resolve_scale(
@@ -157,6 +157,24 @@ if "implied_volatility" in df.columns and df["implied_volatility"].notna().any()
     ).properties(height=300)
 
     st.altair_chart(iv_chart, use_container_width=True)
+
+# Extra analyse grafieken
+st.subheader("Analyse van Optiewaarden")
+
+analysis_chart = alt.Chart(df).transform_fold(
+    ["intrinsieke_waarde", "tijdswaarde", "ppd"],
+    as_=["Soort", "Waarde"]
+).mark_line(point=True).encode(
+    x=alt.X("snapshot_date:T", title="Peildatum"),
+    y=alt.Y("Waarde:Q", title="Waarde"),
+    color=alt.Color("Soort:N"),
+    tooltip=["snapshot_date:T", "Soort", "Waarde"]
+).properties(
+    height=400,
+    title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
+)
+
+st.altair_chart(analysis_chart, use_container_width=True)
 
 # Debug info
 st.write("Aantal datapunten:", len(df))
