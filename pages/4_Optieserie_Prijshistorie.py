@@ -170,21 +170,23 @@ for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
 
 if len(analyse_kolommen) > 1:
     analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
+    if not analysis_df.empty:
+        analysis_chart = alt.Chart(analysis_df).transform_fold(
+            analyse_kolommen[1:],  # alle behalve snapshot_date
+            as_=["Soort", "Waarde"]
+        ).mark_line(point=True).encode(
+            x=alt.X("snapshot_date:T", title="Peildatum"),
+            y=alt.Y("Waarde:Q", title="Waarde"),
+            color=alt.Color("Soort:N"),
+            tooltip=["snapshot_date:T", "Soort", "Waarde"]
+        ).properties(
+            height=400,
+            title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
+        )
 
-    analysis_chart = alt.Chart(analysis_df).transform_fold(
-        analyse_kolommen[1:],  # alle behalve snapshot_date
-        as_=["Soort", "Waarde"]
-    ).mark_line(point=True).encode(
-        x=alt.X("snapshot_date:T", title="Peildatum"),
-        y=alt.Y("Waarde:Q", title="Waarde"),
-        color=alt.Color("Soort:N"),
-        tooltip=["snapshot_date:T", "Soort", "Waarde"]
-    ).properties(
-        height=400,
-        title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
-    )
-
-    st.altair_chart(analysis_chart, use_container_width=True)
+        st.altair_chart(analysis_chart, use_container_width=True)
+    else:
+        st.info("Geen geldige data voor analyse-grafiek.")
 else:
     st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
 
