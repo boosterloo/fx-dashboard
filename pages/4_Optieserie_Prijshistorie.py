@@ -44,7 +44,7 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
     all_data = []
     while True:
         try:
-            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, vix, type, expiration, strike").range(offset, offset + batch_size - 1)
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, vix, type, expiration, strike, ppd").range(offset, offset + batch_size - 1)
             response = query.execute()
             if not response.data:
                 break
@@ -93,8 +93,6 @@ underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns
 expiration_converted = pd.to_datetime(df["expiration"].iloc[0], errors="coerce")
 df["intrinsieke_waarde"] = df.apply(lambda row: max(row["strike"] - row["underlying_price"], 0) if row["type"] == "put" else max(row["underlying_price"] - row["strike"], 0), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
-if "ppd" not in df.columns:
-    df["ppd"] = df["last_price"] / ((expiration_converted - df["snapshot_date"]).dt.days + 0.01)
 
 # Plot line charts
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
