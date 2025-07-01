@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta
 
 # Set page config
-st.set_page_config(page_title="📈 Prijsontwikkeling van een Optieserie", layout="wide")
+st.set_page_config(page_title="Prijsontwikkeling van een Optieserie", layout="wide")
 
 # Initialize Supabase client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -90,9 +90,10 @@ df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.strftime("%Y-%m-%d
 
 # Bereken aanvullende metrics
 underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
+expiration_converted = pd.to_datetime(df["expiration"].iloc[0], errors="coerce")
 df["intrinsieke_waarde"] = df.apply(lambda row: max(row["strike"] - row["underlying_price"], 0) if row["type"] == "put" else max(row["underlying_price"] - row["strike"], 0), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
-df["ppd"] = df["last_price"] / ((pd.to_datetime(df["expiration"], errors="coerce") - pd.to_datetime(df["snapshot_date"], errors="coerce")).dt.days + 0.01)
+df["ppd"] = df["last_price"] / ((expiration_converted - df["snapshot_date"]).dt.days + 0.01)
 
 # Plot line charts
 st.subheader("Prijsontwikkeling van de geselecteerde Optieserie")
