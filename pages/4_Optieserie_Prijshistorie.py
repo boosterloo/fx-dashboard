@@ -58,16 +58,9 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
             st.error(f"Fout bij ophalen van data: {e}")
             break
     df = pd.DataFrame(all_data)
-    if not df.empty:
-        # Debug: Toon ruwe data
-        st.write("**Debug: Ruwe DataFrame van Supabase**")
-        st.dataframe(df.head())
-        st.write("**Debug: Data types van ruwe DataFrame**", df.dtypes)
-        st.write("**Debug: Aantal NaN-waarden in ruwe DataFrame**", df.isna().sum())
-        
-        if "snapshot_date" in df.columns:
-            df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
-            df = df.sort_values("snapshot_date")
+    if not df.empty and "snapshot_date" in df.columns:
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+        df = df.sort_values("snapshot_date")
     return df
 
 st.title("\U0001F4C8 Prijsontwikkeling van een Optieserie")
@@ -164,7 +157,7 @@ if "implied_volatility" in df.columns and df["implied_volatility"].notna().any()
 
     st.altair_chart(iv_chart, use_container_width=True)
 
-# Extra analyse grafieken
+# Analyse van Optiewaarden
 st.subheader("Analyse van Optiewaarden")
 
 # Check welke kolommen aanwezig zijn voor analyse
@@ -186,44 +179,30 @@ if len(analyse_kolommen) > 1:
     st.write("**Debug: Data types**", analysis_df.dtypes)
     st.write("**Debug: Aantal niet-NaN rijen per kolom**", analysis_df.count())
     st.write("**Debug: Aanwezigheid van NaN-waarden**", analysis_df[analyse_kolommen[1:]].isna().any().to_dict())
-    st.write("**Debug: Kolommen voor transform_fold**", analyse_kolommen[1:])
     
     if not analysis_df.empty and analysis_df[analyse_kolommen[1:]].apply(lambda x: pd.api.types.is_numeric_dtype(x)).all():
         try:
-            analysis_chart = alt.Chart(analysis_df).transform_fold(
-                analyse_kolommen[1:],
-                as_=["Soort", "Waarde"]
-            ).mark_line(point=True).encode(
-                x=alt.X("snapshot_date:T", title="Peildatum"),
-                y=alt.Y("Waarde:Q", title="Waarde"),
-                color=alt.Color("Soort:N"),
-                tooltip=["snapshot_date:T", "Soort", "Waarde"]
-            ).properties(
+            # Gebruik alt.layer voor afzonderlijke lijnen
+            base = alt.Chart(analysis_df).encode(x=alt.X("snapshot_date:T", title="Peildatum"))
+            charts = []
+            colors = {"intrinsieke_waarde": "#1f77b4", "tijdswaarde": "#ff7f0e", "ppd": "#2ca02c"}
+            for col in analyse_kolommen[1:]:
+                chart = base.mark_line(point=True).encode(
+                    y=alt.Y(f"{col}:Q", title="Waarde"),
+                    color=alt.value(colors.get(col)),
+                    tooltip=["snapshot_date:T", f"{col}:Q"]
+                )
+                charts.append(chart)
+            
+            combined_chart = alt.layer(*charts).resolve_scale(y="independent").properties(
                 height=400,
                 title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
             )
-            st.altair_chart(analysis_chart, use_container_width=True)
+            st.altair_chart(combined_chart, use_container_width=True)
         except Exception as e:
-            st.error(f"Fout bij genereren van analyse-grafiek: {e}")
-            # Test met een eenvoudige grafiek
-            st.write("**Probeer een eenvoudige grafiek met alleen intrinsieke_waarde**")
-            if "intrinsieke_waarde" in analysis_df.columns and analysis_df["intrinsieke_waarde"].notna().any():
-                try:
-                    test_chart = alt.Chart(analysis_df).mark_line(point=True).encode(
-                        x=alt.X("snapshot_date:T", title="Peildatum"),
-                        y=alt.Y("intrinsieke_waarde:Q", title="Intrinsieke Waarde"),
-                        tooltip=["snapshot_date:T", "intrinsieke_waarde"]
-                    ).properties(
-                        height=400,
-                        title="Test: Intrinsieke Waarde"
-                    )
-                    st.altair_chart(test_chart, use_container_width=True)
-                except Exception as e:
-                    st.error(f"Fout bij genereren van testgrafiek: {e}")
-            else:
-                st.info("Geen geldige data voor intrinsieke_waarde om testgrafiek te maken.")
+            st.error(f"Fout: {e}")
     else:
-        st.info("Geen geldige numerieke data voor analyse-grafiek.")
+        st.info("Geen geldige numerieke data.")
 else:
     st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
 
