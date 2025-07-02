@@ -126,16 +126,20 @@ with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", ex
         base_iv = alt.Chart(df).transform_fold(
             ["implied_volatility", "vix"],
             as_=["Type", "Waarde"]
-        ).mark_line(point=True).encode(
+        )
+
+        iv_line = base_iv.mark_line(point=True).encode(
             x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
             y=alt.Y("Waarde:Q", title="Waarde"),
             color=alt.Color("Type:N", title="Legende"),
             tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
-        ).properties(
+        )
+
+        iv_chart = iv_line.resolve_scale(y="independent").properties(
             height=300
         )
 
-        st.altair_chart(base_iv, use_container_width=True)
+        st.altair_chart(iv_chart, use_container_width=True)
 
 # Analyse van Optiewaarden
 with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded=True):
@@ -156,7 +160,7 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
                 y=alt.Y("Waarde:Q", title="Waarde"),
                 color=alt.Color("Type:N", title="Legende"),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
-            ).properties(
+            ).resolve_scale(y="independent").properties(
                 height=400,
                 title="Tijdswaarde en premium per dag (PPD)"
             )
