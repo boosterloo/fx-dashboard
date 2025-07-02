@@ -129,23 +129,15 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
 # Implied Volatility + VIX
 with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", expanded=True):
     if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
-        base_iv = alt.Chart(df).encode(
-            x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
-        )
+        df_iv = df[["formatted_date", "implied_volatility", "vix"]].dropna()
+        melted_iv = df_iv.melt(id_vars="formatted_date", value_vars=["implied_volatility", "vix"], var_name="Type", value_name="Waarde")
 
-        iv_line = base_iv.mark_line(point=True).encode(
-            y=alt.Y("implied_volatility:Q", title="Implied Volatility", scale=alt.Scale(nice=True)),
-            color=alt.value("#1f77b4"),
-            tooltip=["formatted_date:T", "implied_volatility"]
-        )
-
-        vix_line = base_iv.mark_line(point=True, strokeDash=[4,2]).encode(
-            y=alt.Y("vix:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(nice=True)),
-            color=alt.value("#ff7f0e"),
-            tooltip=["formatted_date:T", "vix"]
-        )
-
-        iv_chart = alt.layer(iv_line, vix_line).resolve_scale(y="independent").properties(height=300)
+        iv_chart = alt.Chart(melted_iv).mark_line(point=True).encode(
+            x=alt.X("formatted_date:T", title="Peildatum (datum)"),
+            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True)),
+            color=alt.Color("Type:N", title="Legenda", scale=alt.Scale(scheme="set1")),
+            tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
+        ).properties(height=300)
 
         st.altair_chart(iv_chart, use_container_width=True)
 
