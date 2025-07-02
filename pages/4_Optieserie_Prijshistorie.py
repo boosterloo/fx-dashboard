@@ -102,4 +102,4 @@ df["ppd/tijdswaarde"] = df["ppd"] / df["tijdswaarde"].replace(0, pd.NA)
 df["iv/vix"] = df["implied_volatility"] / df["vix"].replace(0, pd.NA)
 
 # Export knop
-st.download_button("📥 Download CSV", df.to_csv(index=False), "optiedata.csv")
+st.download_button("\U0001F4E5 Download CSV", df.to_csv(index=False), "optiedata.csv")
