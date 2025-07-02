@@ -63,10 +63,10 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
         df = df.sort_values("snapshot_date")
     return df
 
-st.title("\U0001F4C8 Prijsontwikkeling van een Optieserie")
+st.title(":chart_with_upwards_trend: Prijsontwikkeling van een Optieserie")
 
 # Sidebar filters
-st.sidebar.header("\U0001F50D Filters")
+st.sidebar.header(":mag: Filters")
 defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
 # Haal beschikbare expiraties en strikes op
@@ -93,71 +93,41 @@ underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns
 df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
-# Plot line charts
-with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expanded=True):
-    chart = alt.Chart(df).transform_fold(
-        ["bid", "ask", "last_price"],
-        as_=["Type", "Prijs"]
-    ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
-        x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-        y=alt.Y("Prijs:Q", title="Optieprijs"),
-        color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
-        tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
-    ).properties(
-        height=500,
-        title="Bid, Ask en LastPrice door de tijd"
-    )
-
-    text = alt.Chart(df).transform_fold(
-        ["last_price"],
-        as_=["Type", "Prijs"]
-    ).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=16, fontWeight="bold").encode(
-        x=alt.X("formatted_date:T", timeUnit="yearmonthdate"),
-        y="Prijs:Q",
-        text="Prijs:Q",
-        color=alt.Color("Type:N", scale=alt.Scale(scheme="category10"))
-    )
-
-    # Tweede y-as voor underlying
-    base = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
-    price_chart = chart
-    underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
-        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
-    )
-    underlying_text = base.mark_text(align="center", dy=-15, fontSize=14).encode(
-        y="underlying_price:Q",
-        text="underlying_price:Q"
-    )
-
-    combined_chart = alt.layer(price_chart, text, underlying, underlying_text).resolve_scale(
-        y="independent"
-    )
-
-    st.altair_chart(combined_chart, use_container_width=True)
-
 # Implied Volatility + VIX
-with st.expander("📈 Implied Volatility (IV) en VIX", expanded=True):
+with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", expanded=True):
     if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
         base_iv = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
-        iv_line = base_iv.mark_line(point=True, color="#1f77b4").encode(
+        iv_line = base_iv.mark_line(point=True).encode(
             y=alt.Y("implied_volatility:Q", title="Implied Volatility"),
+            color=alt.value("#1f77b4"),
             tooltip=["formatted_date:T", "implied_volatility"]
-        )
+        ).properties(title="Implied Volatility")
 
-        vix_line = base_iv.mark_line(strokeDash=[4,2], point=True, color="#ff7f0e").encode(
+        vix_line = base_iv.mark_line(point=True).encode(
             y=alt.Y("vix:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(zero=False)),
+            color=alt.value("#ff7f0e"),
             tooltip=["formatted_date:T", "vix"]
-        )
+        ).properties(title="VIX")
 
-        iv_chart = alt.layer(iv_line, vix_line).resolve_scale(
-            y="independent"
-        ).properties(height=300)
+        legend_data = pd.DataFrame({
+            "Legende": ["Implied Volatility", "VIX"],
+            "kleur": ["#1f77b4", "#ff7f0e"],
+            "dummy_x": [df["formatted_date"].iloc[-1]] * 2,
+            "dummy_y": [df["implied_volatility"].max(), df["vix"].max()]
+        })
+
+        legend = alt.Chart(legend_data).mark_point(filled=True, size=100).encode(
+            x="dummy_x:T",
+            y="dummy_y:Q",
+            color=alt.Color("Legende:N", scale=alt.Scale(domain=legend_data["Legende"], range=legend_data["kleur"]))
+        ).properties(title="Legenda")
+
+        iv_chart = alt.layer(iv_line, vix_line, legend).resolve_scale(y="independent").properties(height=300)
 
         st.altair_chart(iv_chart, use_container_width=True)
 
 # Analyse van Optiewaarden
-with st.expander("📈 Analyse van Optiewaarden", expanded=True):
-    # Check welke kolommen aanwezig zijn voor analyse
+with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded=True):
     analyse_kolommen = ["formatted_date"]
     for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
         if kolom in df.columns:
@@ -169,48 +139,46 @@ with st.expander("📈 Analyse van Optiewaarden", expanded=True):
 
     if len(analyse_kolommen) > 1:
         analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
-        
+
         if not analysis_df.empty and analysis_df[analyse_kolommen[1:]].apply(lambda x: pd.api.types.is_numeric_dtype(x)).all():
             try:
-                # Gebruik alt.layer voor afzonderlijke lijnen
                 base = alt.Chart(analysis_df).encode(
                     x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
                 )
                 charts = []
-                colors = {"intrinsieke_waarde": "#1f77b4", "tijdswaarde": "#ff7f0e", "ppd": "#2ca02c"}
                 for col in analyse_kolommen[1:]:
-                    # Als alle waarden 0 zijn, toon een waarschuwing en sla over
-                    if analysis_df[col].eq(0).all() and col == "intrinsieke_waarde":
-                        st.warning("Intrinsieke waarde is overal 0 (optie ver uit het geld).")
-                    else:
-                        chart = base.mark_line(point=True).encode(
-                            y=alt.Y(f"{col}:Q", title="Waarde"),
-                            color=alt.value(colors.get(col)),
-                            tooltip=["formatted_date:T", f"{col}:Q"]
-                        )
-                        charts.append(chart)
-                
-                if charts:  # Alleen tekenen als er lijnen zijn
-                    combined_chart = alt.layer(*charts).resolve_scale(y="independent").properties(
-                        height=400,
-                        title="Tijdswaarde en premium per dag (PPD)"
-                    )
-                    st.altair_chart(combined_chart, use_container_width=True)
+                    chart = base.mark_line(point=True).encode(
+                        y=alt.Y(f"{col}:Q", title="Waarde"),
+                        color=alt.value({
+                            "intrinsieke_waarde": "#1f77b4",
+                            "tijdswaarde": "#ff7f0e",
+                            "ppd": "#2ca02c"
+                        }.get(col)),
+                        tooltip=["formatted_date:T", f"{col}:Q"]
+                    ).properties(title=col)
+                    charts.append(chart)
+
+                legend_df = pd.DataFrame({
+                    "Legende": analyse_kolommen[1:],
+                    "kleur": ["#1f77b4", "#ff7f0e", "#2ca02c"][:len(analyse_kolommen)-1],
+                    "dummy_x": [analysis_df["formatted_date"].iloc[-1]] * (len(analyse_kolommen)-1),
+                    "dummy_y": [analysis_df[col].max() for col in analyse_kolommen[1:]]
+                })
+
+                legend = alt.Chart(legend_df).mark_point(filled=True, size=100).encode(
+                    x="dummy_x:T",
+                    y="dummy_y:Q",
+                    color=alt.Color("Legende:N", scale=alt.Scale(domain=legend_df["Legende"], range=legend_df["kleur"]))
+                ).properties(title="Legenda")
+
+                combined_chart = alt.layer(*charts, legend).resolve_scale(y="independent").properties(
+                    height=400,
+                    title="Tijdswaarde en premium per dag (PPD)"
+                )
+                st.altair_chart(combined_chart, use_container_width=True)
             except Exception as e:
                 st.error(f"Fout: {e}")
         else:
             st.info("Geen geldige numerieke data.")
     else:
         st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
-
-# Debug info in een aparte expander
-with st.expander("📊 Debug en data"):
-    st.write("Aantal datapunten:", len(df))
-    st.write("Data voorbeeld:")
-    st.dataframe(df.head())
-    if len(analyse_kolommen) > 1:
-        st.write("**Debug: Inhoud van analysis_df**")
-        st.dataframe(analysis_df.head())
-        st.write("**Debug: Data types**", analysis_df.dtypes)
-        st.write("**Debug: Aantal niet-NaN rijen per kolom**", analysis_df.count())
-        st.write("**Debug: Aanwezigheid van NaN-waarden**", analysis_df[analyse_kolommen[1:]].isna().any().to_dict())
