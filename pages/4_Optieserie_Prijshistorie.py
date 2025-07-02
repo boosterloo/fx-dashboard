@@ -109,7 +109,7 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
     )
 
     sp_line = base.mark_line(strokeDash=[4, 4]).encode(
-        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False)),
+        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(nice=True)),
         color=alt.value("gray")
     )
 
@@ -123,21 +123,21 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
 # Implied Volatility + VIX
 with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", expanded=True):
     if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
-        base_iv = alt.Chart(df).transform_fold(
-            ["implied_volatility", "vix"],
-            as_=["Type", "Waarde"]
+        base_iv = alt.Chart(df).encode(
+            x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
         )
 
-        iv_line = base_iv.mark_line(point=True).encode(
-            x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(zero=False, nice=True)),
-            color=alt.Color("Type:N", title="Legende"),
-            tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
+        iv_line = base_iv.mark_line(point=True, color="#1f77b4").encode(
+            y=alt.Y("implied_volatility:Q", title="Implied Volatility", scale=alt.Scale(nice=True)),
+            tooltip=["formatted_date:T", "implied_volatility"]
         )
 
-        iv_chart = iv_line.resolve_scale(y="independent").properties(
-            height=300
+        vix_line = base_iv.mark_line(point=True, color="#ff7f0e", strokeDash=[4,2]).encode(
+            y=alt.Y("vix:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(nice=True)),
+            tooltip=["formatted_date:T", "vix"]
         )
+
+        iv_chart = alt.layer(iv_line, vix_line).resolve_scale(y="independent").properties(height=300)
 
         st.altair_chart(iv_chart, use_container_width=True)
 
@@ -155,15 +155,25 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
 
         if not analysis_df.empty:
             melted_df = analysis_df.melt(id_vars="formatted_date", value_vars=analyse_kolommen[1:], var_name="Type", value_name="Waarde")
-            chart = alt.Chart(melted_df).mark_line(point=True).encode(
+
+            base_chart = alt.Chart(melted_df).encode(
                 x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-                y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(zero=False, nice=True)),
                 color=alt.Color("Type:N", title="Legende"),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
-            ).resolve_scale(y="independent").properties(
+            )
+
+            layered_lines = []
+            for type_value in melted_df["Type"].unique():
+                line = base_chart.transform_filter(alt.datum.Type == type_value).mark_line(point=True).encode(
+                    y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True))
+                )
+                layered_lines.append(line)
+
+            chart = alt.layer(*layered_lines).resolve_scale(y="independent").properties(
                 height=400,
                 title="Tijdswaarde en premium per dag (PPD)"
             )
+
             st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Geen geldige numerieke data.")
