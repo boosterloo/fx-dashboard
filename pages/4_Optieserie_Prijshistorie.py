@@ -39,7 +39,7 @@ def get_unique_values_chunked(table_name, column, batch_size=1000):
 
 # Fetch data for specific filters in chunks
 @st.cache_data(ttl=3600)
-def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strikes=None, batch_size=1000):
+def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
     offset = 0
     all_data = []
     while True:
@@ -51,7 +51,7 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
             for row in response.data:
                 if (type_optie is None or row.get("type") == type_optie) and \
                    (expiration is None or row.get("expiration") == expiration) and \
-                   (strikes is None or row.get("strike") in strikes):
+                   (strike is None or row.get("strike") == strike):
                     all_data.append(row)
             offset += batch_size
         except Exception as e:
@@ -76,15 +76,10 @@ strikes = get_unique_values_chunked("spx_options2", "strike")
 # Filters
 type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)
 expiration = st.sidebar.selectbox("Expiratiedatum", expirations, index=0 if defaultexp not in expirations else expirations.index(defaultexp)) if expirations else None
-selected_strikes = st.sidebar.multiselect("Strike(s) (bijv. 5700)", strikes, default=[5700]) if strikes else []
-
-# Countdown tot expiratie
-if expiration:
-    days_to_exp = (pd.to_datetime(expiration) - datetime.now()).days
-    st.sidebar.metric("Dagen tot expiratie", days_to_exp)
+strike = st.sidebar.selectbox("Strike (bijv. 5700)", strikes, index=0 if 5700 not in strikes else strikes.index(5700)) if strikes else None
 
 # Fetch data based on filters
-df = fetch_filtered_option_data("spx_options2", type_optie, expiration, selected_strikes)
+df = fetch_filtered_option_data("spx_options2", type_optie, expiration, strike)
 
 if df.empty:
     st.error("Geen data gevonden voor de opgegeven filters.")
@@ -95,11 +90,50 @@ df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.strftime("%Y-%m-%d
 
 # Bereken aanvullende metrics
 underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
-
 df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
-df["ppd/tijdswaarde"] = df["ppd"] / df["tijdswaarde"].replace(0, pd.NA)
-df["iv/vix"] = df["implied_volatility"] / df["vix"].replace(0, pd.NA)
+
+# Plot line charts
+with st.expander("\U0001F4C8 Prijsontwikkeling van de geselecteerde Optieserie", expanded=True):
+    chart = alt.Chart(df).transform_fold(
+        ["bid", "ask", "last_price"],
+        as_=["Type", "Prijs"]
+    ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
+        x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
+        y=alt.Y("Prijs:Q", title="Optieprijs"),
+        color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
+        tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
+    ).properties(
+        height=500,
+        title="Bid, Ask en LastPrice door de tijd"
+    )
+
+    text = alt.Chart(df).transform_fold(
+        ["last_price"],
+        as_=["Type", "Prijs"]
+    ).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=16, fontWeight="bold").encode(
+        x=alt.X("formatted_date:T", timeUnit="yearmonthdate"),
+        y="Prijs:Q",
+        text="Prijs:Q",
+        color=alt.Color("Type:N", scale=alt.Scale(scheme="category10"))
+    )
+
+    # Tweede y-as voor underlying
+    base = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
+    price_chart = chart
+    underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
+        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
+    )
+    underlying_text = base.mark_text(align="center", dy=-15, fontSize=14).encode(
+        y="underlying_price:Q",
+        text="underlying_price:Q"
+    )
+
+    combined_chart = alt.layer(price_chart, text, underlying, underlying_text).resolve_scale(
+        y="independent"
+    )
+
+    st.altair_chart(combined_chart, use_container_width=True)
 
 # Export knop
-st.download_button("\U0001F4E5 Download CSV", df.to_csv(index=False), "optiedata.csv")
+st.download_button("\U0001F4E5 Download CSV", df.to_csv(index=False), file_name="optiedata.csv")
