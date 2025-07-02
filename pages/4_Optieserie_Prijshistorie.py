@@ -130,7 +130,7 @@ with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", ex
 
         iv_line = base_iv.mark_line(point=True).encode(
             x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-            y=alt.Y("Waarde:Q", title="Waarde"),
+            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(zero=False, nice=True)),
             color=alt.Color("Type:N", title="Legende"),
             tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
         )
@@ -157,7 +157,7 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
             melted_df = analysis_df.melt(id_vars="formatted_date", value_vars=analyse_kolommen[1:], var_name="Type", value_name="Waarde")
             chart = alt.Chart(melted_df).mark_line(point=True).encode(
                 x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-                y=alt.Y("Waarde:Q", title="Waarde"),
+                y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(zero=False, nice=True)),
                 color=alt.Color("Type:N", title="Legende"),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
             ).resolve_scale(y="independent").properties(
