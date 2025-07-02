@@ -93,21 +93,31 @@ underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns
 df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
-# Prijsontwikkeling hoofdgrafiek
+# Prijsontwikkeling hoofdgrafiek met S&P koers
 with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie", expanded=True):
-    price_chart = alt.Chart(df).transform_fold(
+    base = alt.Chart(df).encode(
+        x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
+    )
+
+    price_lines = base.transform_fold(
         ["bid", "ask", "last_price"],
         as_=["Type", "Prijs"]
     ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
-        x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
         y=alt.Y("Prijs:Q", title="Optieprijs"),
         color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
-    ).properties(
-        height=500,
-        title="Bid, Ask en LastPrice door de tijd"
     )
-    st.altair_chart(price_chart, use_container_width=True)
+
+    sp_line = base.mark_line(strokeDash=[4, 4], color="gray").encode(
+        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
+    )
+
+    combined_chart = alt.layer(price_lines, sp_line).resolve_scale(y="independent").properties(
+        height=500,
+        title="Bid, Ask, LastPrice en S&P Koers door de tijd"
+    )
+
+    st.altair_chart(combined_chart, use_container_width=True)
 
 # Implied Volatility + VIX
 with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", expanded=True):
