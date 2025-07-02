@@ -91,7 +91,7 @@ df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
 # Date range slider
 min_date = df["snapshot_date"].min().date()
 max_date = df["snapshot_date"].max().date()
-date_range = st.slider("Selecteer peildatum range", min_value=min_date, max_value=max_date, value=(min_date, max_date))
+date_range = st.slider("Selecteer peildatum range", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="%Y-%m-%d")
 df = df[(df["snapshot_date"].dt.date >= date_range[0]) & (df["snapshot_date"].dt.date <= date_range[1])]
 
 # Bereken aanvullende metrics
@@ -164,12 +164,21 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
         if not analysis_df.empty:
             melted_df = analysis_df.melt(id_vars="formatted_date", value_vars=analyse_kolommen[1:], var_name="Type", value_name="Waarde")
 
-            chart = alt.Chart(melted_df).mark_line(point=True).encode(
+            base_analysis = alt.Chart(melted_df).encode(
                 x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-                y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True)),
                 color=alt.Color("Type:N", title="Type", scale=alt.Scale(scheme="tableau10")),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
-            ).properties(
+            )
+
+            y_left = base_analysis.transform_filter(alt.datum.Type != "tijdswaarde").mark_line(point=True).encode(
+                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(nice=True))
+            )
+
+            y_right = base_analysis.transform_filter(alt.datum.Type == "tijdswaarde").mark_line(point=True).encode(
+                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(nice=True))
+            )
+
+            chart = alt.layer(y_left, y_right).resolve_scale(y="independent").properties(
                 height=400,
                 title="Tijdswaarde en premium per dag (PPD)"
             )
