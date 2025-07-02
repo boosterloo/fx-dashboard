@@ -88,6 +88,12 @@ if df.empty:
 # Format datum
 df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.strftime("%Y-%m-%d")
 
+# Date range slider
+min_date = df["snapshot_date"].min()
+max_date = df["snapshot_date"].max()
+date_range = st.slider("Selecteer peildatum range", min_value=min_date, max_value=max_date, value=(min_date, max_date))
+df = df[(df["snapshot_date"] >= date_range[0]) & (df["snapshot_date"] <= date_range[1])]
+
 # Bereken aanvullende metrics
 underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
 df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
@@ -127,13 +133,15 @@ with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", ex
             x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
         )
 
-        iv_line = base_iv.mark_line(point=True, color="#1f77b4").encode(
+        iv_line = base_iv.mark_line(point=True).encode(
             y=alt.Y("implied_volatility:Q", title="Implied Volatility", scale=alt.Scale(nice=True)),
+            color=alt.value("#1f77b4"),
             tooltip=["formatted_date:T", "implied_volatility"]
         )
 
-        vix_line = base_iv.mark_line(point=True, color="#ff7f0e", strokeDash=[4,2]).encode(
+        vix_line = base_iv.mark_line(point=True, strokeDash=[4,2]).encode(
             y=alt.Y("vix:Q", axis=alt.Axis(title="VIX"), scale=alt.Scale(nice=True)),
+            color=alt.value("#ff7f0e"),
             tooltip=["formatted_date:T", "vix"]
         )
 
@@ -156,20 +164,12 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
         if not analysis_df.empty:
             melted_df = analysis_df.melt(id_vars="formatted_date", value_vars=analyse_kolommen[1:], var_name="Type", value_name="Waarde")
 
-            base_chart = alt.Chart(melted_df).encode(
+            chart = alt.Chart(melted_df).mark_line(point=True).encode(
                 x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
+                y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True)),
                 color=alt.Color("Type:N", title="Legende"),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
-            )
-
-            layered_lines = []
-            for type_value in melted_df["Type"].unique():
-                line = base_chart.transform_filter(alt.datum.Type == type_value).mark_line(point=True).encode(
-                    y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True))
-                )
-                layered_lines.append(line)
-
-            chart = alt.layer(*layered_lines).resolve_scale(y="independent").properties(
+            ).properties(
                 height=400,
                 title="Tijdswaarde en premium per dag (PPD)"
             )
