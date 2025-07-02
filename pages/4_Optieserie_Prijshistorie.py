@@ -58,9 +58,16 @@ def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, str
             st.error(f"Fout bij ophalen van data: {e}")
             break
     df = pd.DataFrame(all_data)
-    if not df.empty and "snapshot_date" in df.columns:
-        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
-        df = df.sort_values("snapshot_date")
+    if not df.empty:
+        # Debug: Toon ruwe data
+        st.write("**Debug: Ruwe DataFrame van Supabase**")
+        st.dataframe(df.head())
+        st.write("**Debug: Data types van ruwe DataFrame**", df.dtypes)
+        st.write("**Debug: Aantal NaN-waarden in ruwe DataFrame**", df.isna().sum())
+        
+        if "snapshot_date" in df.columns:
+            df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+            df = df.sort_values("snapshot_date")
     return df
 
 st.title("\U0001F4C8 Prijsontwikkeling van een Optieserie")
@@ -167,10 +174,21 @@ for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
         df[kolom] = pd.to_numeric(df[kolom], errors="coerce")
         if df[kolom].notna().any():
             analyse_kolommen.append(kolom)
+        else:
+            st.warning(f"Waarschuwing: Kolom {kolom} bevat geen geldige numerieke waarden.")
 
 if len(analyse_kolommen) > 1:
     analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
-    if not analysis_df.empty:
+    
+    # Debug output
+    st.write("**Debug: Inhoud van analysis_df**")
+    st.dataframe(analysis_df.head())
+    st.write("**Debug: Data types**", analysis_df.dtypes)
+    st.write("**Debug: Aantal niet-NaN rijen per kolom**", analysis_df.count())
+    st.write("**Debug: Aanwezigheid van NaN-waarden**", analysis_df[analyse_kolommen[1:]].isna().any().to_dict())
+    st.write("**Debug: Kolommen voor transform_fold**", analyse_kolommen[1:])
+    
+    if not analysis_df.empty and analysis_df[analyse_kolommen[1:]].apply(lambda x: pd.api.types.is_numeric_dtype(x)).all():
         try:
             analysis_chart = alt.Chart(analysis_df).transform_fold(
                 analyse_kolommen[1:],
@@ -184,12 +202,28 @@ if len(analyse_kolommen) > 1:
                 height=400,
                 title="Intrinsieke waarde, tijdswaarde en premium per dag (PPD)"
             )
-
             st.altair_chart(analysis_chart, use_container_width=True)
         except Exception as e:
             st.error(f"Fout bij genereren van analyse-grafiek: {e}")
+            # Test met een eenvoudige grafiek
+            st.write("**Probeer een eenvoudige grafiek met alleen intrinsieke_waarde**")
+            if "intrinsieke_waarde" in analysis_df.columns and analysis_df["intrinsieke_waarde"].notna().any():
+                try:
+                    test_chart = alt.Chart(analysis_df).mark_line(point=True).encode(
+                        x=alt.X("snapshot_date:T", title="Peildatum"),
+                        y=alt.Y("intrinsieke_waarde:Q", title="Intrinsieke Waarde"),
+                        tooltip=["snapshot_date:T", "intrinsieke_waarde"]
+                    ).properties(
+                        height=400,
+                        title="Test: Intrinsieke Waarde"
+                    )
+                    st.altair_chart(test_chart, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Fout bij genereren van testgrafiek: {e}")
+            else:
+                st.info("Geen geldige data voor intrinsieke_waarde om testgrafiek te maken.")
     else:
-        st.info("Geen geldige data voor analyse-grafiek.")
+        st.info("Geen geldige numerieke data voor analyse-grafiek.")
 else:
     st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
 
