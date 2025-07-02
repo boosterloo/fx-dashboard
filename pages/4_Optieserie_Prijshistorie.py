@@ -94,7 +94,7 @@ df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["unde
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
 # Plot line charts
-with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expanded=True):
+with st.expander("\U0001F4C8 Prijsontwikkeling van de geselecteerde Optieserie", expanded=True):
     chart = alt.Chart(df).transform_fold(
         ["bid", "ask", "last_price"],
         as_=["Type", "Prijs"]
@@ -118,7 +118,6 @@ with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expan
         color=alt.Color("Type:N", scale=alt.Scale(scheme="category10"))
     )
 
-    # Tweede y-as voor underlying
     base = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
     price_chart = chart
     underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
@@ -136,7 +135,7 @@ with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expan
     st.altair_chart(combined_chart, use_container_width=True)
 
 # Implied Volatility + VIX
-with st.expander("📈 Implied Volatility (IV) en VIX", expanded=True):
+with st.expander("\U0001F4C8 Implied Volatility (IV) en VIX", expanded=True):
     if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
         base_iv = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
         iv_line = base_iv.mark_line(point=True, color="#1f77b4").encode(
@@ -156,8 +155,7 @@ with st.expander("📈 Implied Volatility (IV) en VIX", expanded=True):
         st.altair_chart(iv_chart, use_container_width=True)
 
 # Analyse van Optiewaarden
-with st.expander("📈 Analyse van Optiewaarden", expanded=True):
-    # Check welke kolommen aanwezig zijn voor analyse
+with st.expander("\U0001F4C8 Analyse van Optiewaarden", expanded=True):
     analyse_kolommen = ["formatted_date"]
     for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
         if kolom in df.columns:
@@ -169,17 +167,15 @@ with st.expander("📈 Analyse van Optiewaarden", expanded=True):
 
     if len(analyse_kolommen) > 1:
         analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
-        
+
         if not analysis_df.empty and analysis_df[analyse_kolommen[1:]].apply(lambda x: pd.api.types.is_numeric_dtype(x)).all():
             try:
-                # Gebruik alt.layer voor afzonderlijke lijnen
                 base = alt.Chart(analysis_df).encode(
                     x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
                 )
                 charts = []
                 colors = {"intrinsieke_waarde": "#1f77b4", "tijdswaarde": "#ff7f0e", "ppd": "#2ca02c"}
                 for col in analyse_kolommen[1:]:
-                    # Als alle waarden 0 zijn, toon een waarschuwing en sla over
                     if analysis_df[col].eq(0).all() and col == "intrinsieke_waarde":
                         st.warning("Intrinsieke waarde is overal 0 (optie ver uit het geld).")
                     else:
@@ -189,8 +185,8 @@ with st.expander("📈 Analyse van Optiewaarden", expanded=True):
                             tooltip=["formatted_date:T", f"{col}:Q"]
                         )
                         charts.append(chart)
-                
-                if charts:  # Alleen tekenen als er lijnen zijn
+
+                if charts:
                     combined_chart = alt.layer(*charts).resolve_scale(y="independent").properties(
                         height=400,
                         title="Tijdswaarde en premium per dag (PPD)"
@@ -204,7 +200,7 @@ with st.expander("📈 Analyse van Optiewaarden", expanded=True):
         st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
 
 # Debug info in een aparte expander
-with st.expander("📊 Debug en data"):
+with st.expander("\U0001F4CA Debug en data"):
     st.write("Aantal datapunten:", len(df))
     st.write("Data voorbeeld:")
     st.dataframe(df.head())
