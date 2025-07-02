@@ -86,13 +86,13 @@ if df.empty:
     st.stop()
 
 # Format datum
-df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.strftime("%Y-%m-%d")
+df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
 
 # Date range slider
-min_date = df["snapshot_date"].min()
-max_date = df["snapshot_date"].max()
+min_date = df["snapshot_date"].min().date()
+max_date = df["snapshot_date"].max().date()
 date_range = st.slider("Selecteer peildatum range", min_value=min_date, max_value=max_date, value=(min_date, max_date))
-df = df[(df["snapshot_date"] >= date_range[0]) & (df["snapshot_date"] <= date_range[1])]
+df = df[(df["snapshot_date"].dt.date >= date_range[0]) & (df["snapshot_date"].dt.date <= date_range[1])]
 
 # Bereken aanvullende metrics
 underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
@@ -167,7 +167,7 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
             chart = alt.Chart(melted_df).mark_line(point=True).encode(
                 x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
                 y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True)),
-                color=alt.Color("Type:N", title="Legende"),
+                color=alt.Color("Type:N", title="Type", scale=alt.Scale(scheme="tableau10")),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
             ).properties(
                 height=400,
