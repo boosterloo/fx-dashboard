@@ -99,7 +99,7 @@ with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expan
         ["bid", "ask", "last_price"],
         as_=["Type", "Prijs"]
     ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
-        x=alt.X("formatted_date:T", title="Peildatum (datum)"),
+        x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
         y=alt.Y("Prijs:Q", title="Optieprijs"),
         color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
@@ -112,14 +112,14 @@ with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expan
         ["last_price"],
         as_=["Type", "Prijs"]
     ).mark_text(align="left", baseline="middle", dx=7, dy=-10, fontSize=16, fontWeight="bold").encode(
-        x="formatted_date:T",
+        x=alt.X("formatted_date:T", timeUnit="yearmonthdate"),
         y="Prijs:Q",
         text="Prijs:Q",
         color=alt.Color("Type:N", scale=alt.Scale(scheme="category10"))
     )
 
     # Tweede y-as voor underlying
-    base = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)"))
+    base = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
     price_chart = chart
     underlying = base.mark_line(strokeDash=[4, 4], color="gray").encode(
         y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(zero=False))
@@ -136,9 +136,9 @@ with st.expander("📈 Prijsontwikkeling van de geselecteerde Optieserie", expan
     st.altair_chart(combined_chart, use_container_width=True)
 
 # Implied Volatility + VIX
-with st.expander("📈 Implied Volatility (IV) en VIX"):
+with st.expander("📈 Implied Volatility (IV) en VIX", expanded=True):
     if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
-        base_iv = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)"))
+        base_iv = alt.Chart(df).encode(x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"))
         iv_line = base_iv.mark_line(point=True, color="#1f77b4").encode(
             y=alt.Y("implied_volatility:Q", title="Implied Volatility"),
             tooltip=["formatted_date:T", "implied_volatility"]
@@ -156,7 +156,7 @@ with st.expander("📈 Implied Volatility (IV) en VIX"):
         st.altair_chart(iv_chart, use_container_width=True)
 
 # Analyse van Optiewaarden
-with st.expander("📈 Analyse van Optiewaarden"):
+with st.expander("📈 Analyse van Optiewaarden", expanded=True):
     # Check welke kolommen aanwezig zijn voor analyse
     analyse_kolommen = ["formatted_date"]
     for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
@@ -174,7 +174,7 @@ with st.expander("📈 Analyse van Optiewaarden"):
             try:
                 # Gebruik alt.layer voor afzonderlijke lijnen
                 base = alt.Chart(analysis_df).encode(
-                    x=alt.X("formatted_date:T", title="Peildatum (datum)")
+                    x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
                 )
                 charts = []
                 colors = {"intrinsieke_waarde": "#1f77b4", "tijdswaarde": "#ff7f0e", "ppd": "#2ca02c"}
