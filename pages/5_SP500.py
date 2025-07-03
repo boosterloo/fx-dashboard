@@ -9,7 +9,8 @@ st.title("📈 S&P 500 Dashboard")
 # === Data ophalen ===
 df = get_supabase_data("sp500_data")
 
-if df is None or df.empty:
+# Controleer op geldigheid
+if df is None or not isinstance(df, pd.DataFrame) or df.empty:
     st.warning("Geen data beschikbaar.")
     st.stop()
 
@@ -28,6 +29,10 @@ start_date, end_date = st.date_input(
 
 mask = (df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))
 df_filtered = df.loc[mask].copy()
+
+if df_filtered.empty:
+    st.warning("Geen data binnen de geselecteerde periode.")
+    st.stop()
 
 # === Heikin-Ashi berekening ===
 df_ha = df_filtered.copy()

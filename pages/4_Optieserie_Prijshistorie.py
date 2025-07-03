@@ -114,8 +114,9 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
     )
 
+    # ✅ Auto-scaling op tweede Y-as (S&P koers)
     sp_line = base.mark_line(strokeDash=[4, 4]).encode(
-        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers"), scale=alt.Scale(nice=True)),
+        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers")),
         color=alt.value("gray")
     )
 
