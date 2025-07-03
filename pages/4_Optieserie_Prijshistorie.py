@@ -90,7 +90,7 @@ underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns
 df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
-# ✅ Aangepaste hoofdgrafiek met S&P Koers op aparte auto-scaled y-as
+# ✅ Eén gecombineerde grafiek met auto-scaling tweede y-as (S&P)
 with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie", expanded=True):
     base = alt.Chart(df).encode(
         x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
@@ -100,18 +100,21 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         ["bid", "ask", "last_price"],
         as_=["Type", "Prijs"]
     ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
-        y=alt.Y("Prijs:Q", title="Optieprijs"),
+        y=alt.Y("Prijs:Q", title="Optieprijs (linkeras)"),
         color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
-    ).properties(height=400, width=500)
+    )
 
-    sp_chart = alt.Chart(df).mark_line(strokeDash=[4, 4], color='gray').encode(
-        x=alt.X("formatted_date:T", title="Peildatum (datum)"),
-        y=alt.Y("underlying_price:Q", title="S&P Koers"),
+    sp_line = base.mark_line(strokeDash=[4, 4]).encode(
+        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers (rechteras)", orient="right")),
+        color=alt.value("gray"),
         tooltip=["formatted_date:T", "underlying_price:Q"]
-    ).properties(height=400, width=300)
+    )
 
-    combined_chart = alt.hconcat(price_lines, sp_chart).resolve_scale(x="shared")
+    combined_chart = alt.layer(price_lines, sp_line).resolve_scale(y='independent').properties(
+        height=500,
+        title="Bid, Ask, LastPrice en S&P Koers door de tijd"
+    )
 
     st.altair_chart(combined_chart, use_container_width=True)
 
