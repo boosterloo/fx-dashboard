@@ -1,74 +1,174 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-from utils import get_supabase_data
+import altair as alt
+from supabase import create_client, Client
+import os
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="📈 S&P 500 Dashboard", layout="wide")
-st.title("📈 S&P 500 Dashboard")
+# Set page config
+st.set_page_config(page_title="Prijsontwikkeling van een Optieserie", layout="wide")
 
-# === Data ophalen ===
-df = get_supabase_data("sp500_data")
-
-# Controleer op geldigheid
-if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-    st.warning("Geen data beschikbaar.")
+# Initialize Supabase client
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("Supabase configuratie ontbreekt. Controleer SUPABASE_URL en SUPABASE_KEY.")
     st.stop()
 
-# === Datumfilter ===
-df["date"] = pd.to_datetime(df["date"])
-date_min = df["date"].min()
-date_max = df["date"].max()
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-start_date, end_date = st.date_input(
-    "Selecteer datumrange",
-    value=[date_min, date_max],
-    min_value=date_min,
-    max_value=date_max,
-    format="YYYY-MM-DD"
-)
+@st.cache_data(ttl=3600)
+def get_unique_values_chunked(table_name, column, batch_size=1000):
+    offset = 0
+    all_values = set()
+    while True:
+        try:
+            query = supabase.table(table_name).select(column).range(offset, offset + batch_size - 1)
+            response = query.execute()
+            if not response.data:
+                break
+            for row in response.data:
+                if column in row:
+                    all_values.add(row[column])
+            offset += batch_size
+        except Exception as e:
+            st.warning(f"Fout bij ophalen van waarden voor {column}: {e}")
+            break
+    return sorted(all_values)
 
-mask = (df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))
-df_filtered = df.loc[mask].copy()
+@st.cache_data(ttl=3600)
+def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
+    offset = 0
+    all_data = []
+    while True:
+        try:
+            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, vix, type, expiration, strike, ppd").range(offset, offset + batch_size - 1)
+            response = query.execute()
+            if not response.data:
+                break
+            for row in response.data:
+                if (type_optie is None or row.get("type") == type_optie) and \
+                   (expiration is None or row.get("expiration") == expiration) and \
+                   (strike is None or row.get("strike") == strike):
+                    all_data.append(row)
+            offset += batch_size
+        except Exception as e:
+            st.error(f"Fout bij ophalen van data: {e}")
+            break
+    df = pd.DataFrame(all_data)
+    if not df.empty and "snapshot_date" in df.columns:
+        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+        df = df.sort_values("snapshot_date")
+    return df
 
-if df_filtered.empty:
-    st.warning("Geen data binnen de geselecteerde periode.")
+st.title(":chart_with_upwards_trend: Prijsontwikkeling van een Optieserie")
+
+st.sidebar.header(":mag: Filters")
+defaultexp = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+expirations = get_unique_values_chunked("spx_options2", "expiration")
+strikes = get_unique_values_chunked("spx_options2", "strike")
+
+type_optie = st.sidebar.selectbox("Type optie", ["call", "put"], index=1)
+expiration = st.sidebar.selectbox("Expiratiedatum", expirations, index=0 if defaultexp not in expirations else expirations.index(defaultexp)) if expirations else None
+strike = st.sidebar.selectbox("Strike (bijv. 5700)", strikes, index=0 if 5700 not in strikes else strikes.index(5700)) if strikes else None
+
+df = fetch_filtered_option_data("spx_options2", type_optie, expiration, strike)
+
+if df.empty:
+    st.error("Geen data gevonden voor de opgegeven filters.")
     st.stop()
 
-# === Heikin-Ashi berekening ===
-df_ha = df_filtered.copy()
-df_ha["ha_close"] = (df_ha["open"] + df_ha["high"] + df_ha["low"] + df_ha["close"]) / 4
-ha_open = [(df_ha["open"].iloc[0] + df_ha["close"].iloc[0]) / 2]
-for i in range(1, len(df_ha)):
-    ha_open.append((ha_open[i - 1] + df_ha["ha_close"].iloc[i - 1]) / 2)
-df_ha["ha_open"] = ha_open
-df_ha["ha_high"] = df_ha[["high", "ha_open", "ha_close"]].max(axis=1)
-df_ha["ha_low"] = df_ha[["low", "ha_open", "ha_close"]].min(axis=1)
+df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
 
-# === EMA toevoegen ===
-df_ha["ema_20"] = df_ha["close"].ewm(span=20, adjust=False).mean()
-df_ha["ema_50"] = df_ha["close"].ewm(span=50, adjust=False).mean()
+min_date = df["snapshot_date"].min().date()
+max_date = df["snapshot_date"].max().date()
+date_range = st.slider("Selecteer peildatum range", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="%Y-%m-%d")
+df = df[(df["snapshot_date"].dt.date >= date_range[0]) & (df["snapshot_date"].dt.date <= date_range[1])]
 
-# === Grafiek ===
-fig = go.Figure()
+underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
+df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
+df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
-fig.add_trace(go.Candlestick(
-    x=df_ha["date"],
-    open=df_ha["ha_open"],
-    high=df_ha["ha_high"],
-    low=df_ha["ha_low"],
-    close=df_ha["ha_close"],
-    name="Heikin-Ashi"
-))
+# ✅ Eén gecombineerde grafiek met tweede Y-as (auto-scaling S&P)
+with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie", expanded=True):
+    base = alt.Chart(df).encode(
+        x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
+    )
 
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_20"], mode="lines", name="EMA 20"))
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_50"], mode="lines", name="EMA 50"))
+    price_lines = base.transform_fold(
+        ["bid", "ask", "last_price"],
+        as_=["Type", "Prijs"]
+    ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
+        y=alt.Y("Prijs:Q", title="Optieprijs (linkeras)"),
+        color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
+        tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
+    )
 
-fig.update_layout(
-    title="S&P 500 met Heikin-Ashi Candles en EMA's",
-    xaxis_title="Datum",
-    yaxis_title="Prijs",
-    xaxis_rangeslider_visible=False,
-    height=600
-)
+    sp_line = base.mark_line(strokeDash=[4, 4]).encode(
+        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers (rechteras)", orient="right")),
+        color=alt.value("gray"),
+        tooltip=["formatted_date:T", "underlying_price:Q"]
+    )
 
-st.plotly_chart(fig, use_container_width=True)
+    combined_chart = alt.layer(price_lines, sp_line).resolve_scale(y="independent").properties(
+        height=500,
+        title="Bid, Ask, LastPrice en S&P Koers door de tijd"
+    )
+
+    st.altair_chart(combined_chart, use_container_width=True)
+
+# Implied Volatility + VIX
+with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", expanded=True):
+    if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
+        df_iv = df[["formatted_date", "implied_volatility", "vix"]].dropna()
+        melted_iv = df_iv.melt(id_vars="formatted_date", value_vars=["implied_volatility", "vix"], var_name="Type", value_name="Waarde")
+
+        iv_chart = alt.Chart(melted_iv).mark_line(point=True).encode(
+            x=alt.X("formatted_date:T", title="Peildatum (datum)"),
+            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True)),
+            color=alt.Color("Type:N", title="Legenda", scale=alt.Scale(scheme="set1")),
+            tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
+        ).properties(height=300)
+
+        st.altair_chart(iv_chart, use_container_width=True)
+
+# Analyse van Optiewaarden
+with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded=True):
+    analyse_kolommen = ["formatted_date"]
+    for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
+        if kolom in df.columns:
+            df[kolom] = pd.to_numeric(df[kolom], errors="coerce")
+            if df[kolom].notna().any():
+                analyse_kolommen.append(kolom)
+
+    if len(analyse_kolommen) > 1:
+        analysis_df = df[analyse_kolommen].dropna(subset=analyse_kolommen[1:], how="any")
+
+        if not analysis_df.empty:
+            melted_df = analysis_df.melt(id_vars="formatted_date", value_vars=analyse_kolommen[1:], var_name="Type", value_name="Waarde")
+
+            base_analysis = alt.Chart(melted_df).encode(
+                x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
+                color=alt.Color("Type:N", title="Type", scale=alt.Scale(scheme="tableau10")),
+                tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
+            )
+
+            y_left = base_analysis.transform_filter(alt.datum.Type != "tijdswaarde").mark_line(point=True).encode(
+                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(nice=True))
+            )
+
+            y_right = base_analysis.transform_filter(alt.datum.Type == "tijdswaarde").mark_line(point=True).encode(
+                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(nice=True))
+            )
+
+            chart = alt.layer(y_left, y_right).resolve_scale(y="independent").properties(
+                height=400,
+                title="Tijdswaarde en premium per dag (PPD)"
+            )
+
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Geen geldige numerieke data.")
+    else:
+        st.info("Niet genoeg data beschikbaar voor analysegrafiek.")
