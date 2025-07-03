@@ -79,6 +79,9 @@ if df.empty:
     st.error("Geen data gevonden voor de opgegeven filters.")
     st.stop()
 
+# Filter null underlying_price weg
+df = df[df["underlying_price"].notnull()]
+
 df["formatted_date"] = pd.to_datetime(df["snapshot_date"]).dt.date
 
 min_date = df["snapshot_date"].min().date()
@@ -106,7 +109,11 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
     )
 
     sp_line = base.mark_line(strokeDash=[4, 4]).encode(
-        y=alt.Y("underlying_price:Q", axis=alt.Axis(title="S&P Koers (rechteras)", orient="right")),
+        y=alt.Y(
+            "underlying_price:Q",
+            axis=alt.Axis(title="S&P Koers (rechteras)", orient="right"),
+            scale=alt.Scale(nice=True)  # 🔧 auto-scaling actief
+        ),
         color=alt.value("gray"),
         tooltip=["formatted_date:T", "underlying_price:Q"]
     )
