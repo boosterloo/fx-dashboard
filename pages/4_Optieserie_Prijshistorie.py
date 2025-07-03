@@ -93,7 +93,7 @@ underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns
 df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
-# ✅ Eén gecombineerde grafiek met auto-scaling tweede y-as (S&P)
+# ✅ Eén gecombineerde grafiek met dynamisch geschaalde tweede y-as (S&P)
 with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie", expanded=True):
     base = alt.Chart(df).encode(
         x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate")
@@ -108,11 +108,14 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
     )
 
+    y_min = df["underlying_price"].min() * 0.98
+    y_max = df["underlying_price"].max() * 1.02
+
     sp_line = base.mark_line(strokeDash=[4, 4]).encode(
         y=alt.Y(
             "underlying_price:Q",
             axis=alt.Axis(title="S&P Koers (rechteras)", orient="right"),
-            scale=alt.Scale(nice=True)  # 🔧 auto-scaling actief
+            scale=alt.Scale(domain=[y_min, y_max])
         ),
         color=alt.value("gray"),
         tooltip=["formatted_date:T", "underlying_price:Q"]
