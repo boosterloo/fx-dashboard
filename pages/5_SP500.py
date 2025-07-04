@@ -37,14 +37,18 @@ df = df.dropna(subset=["date", "open", "high", "low", "close", "delta"])
 df = df.sort_values("date")
 df["date"] = df["date"].dt.date
 
-# 🗕️ Slider
+# 📅 Datumselectie: slider én invoer
 min_date = df["date"].min()
 max_date = df["date"].max()
+st.markdown("### 📅 Selecteer datumrange")
 col1, col2 = st.columns(2)
 with col1:
     start_date = st.date_input("Startdatum", min_value=min_date, max_value=max_date, value=min_date)
 with col2:
     end_date = st.date_input("Einddatum", min_value=min_date, max_value=max_date, value=max_date)
+
+st.slider("📆 Datumrange (extra zoomoptie)", min_value=min_date, max_value=max_date,
+          value=(start_date, end_date), format="YYYY-MM-DD")
 
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
