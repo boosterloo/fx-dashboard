@@ -16,7 +16,7 @@ supabase: Client = create_client(url, key)
 def load_data():
     response = supabase.table("sp500_data").select("*").execute()
     df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], format='%Y-%m-%d')  # Ensure consistent datetime format
+    df["date"] = pd.to_datetime(df["date"], format='%Y-%m-%d')  # Zorg voor consistent datumformaat
     df = df.sort_values("date")
     return df
 
@@ -26,7 +26,7 @@ df = load_data()
 min_date = df["date"].min()
 max_date = df["date"].max()
 
-# Use pandas Timestamps directly for the slider
+# Gebruik pandas Timestamps direct voor de slider
 start_date, end_date = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
@@ -37,7 +37,7 @@ start_date, end_date = st.slider(
 
 # Filteren op geselecteerde range
 filtered_df = df[(df["date"] >= pd.Timestamp(start_date)) & (df["date"] <= pd.Timestamp(end_date))]
-st.write(filtered_df)  # Debug: Check filtered data
+st.write(filtered_df)  # Debug: Controleer de gefilterde data
 
 # Plot van slotkoersen
 if not filtered_df.empty:
@@ -50,4 +50,4 @@ if not filtered_df.empty:
     )
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.write("No data available for the selected date range.")
+    st.write("Geen data beschikbaar voor de geselecteerde datumrange.")
