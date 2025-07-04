@@ -103,7 +103,7 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         ["bid", "ask", "last_price"],
         as_=["Type", "Prijs"]
     ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
-        y=alt.Y("Prijs:Q", title="Optieprijs (linkeras)"),
+        y=alt.Y("Prijs:Q", title="Optieprijs (linkeras)", scale=alt.Scale(nice=True)),
         color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
     )
