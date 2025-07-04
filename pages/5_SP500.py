@@ -16,110 +16,97 @@ if df is None or df.empty:
     st.warning("Geen data beschikbaar uit Supabase.")
     st.stop()
 
-# Kolomcontrole
+# Check op kolommen
 required_cols = {"date", "open", "high", "low", "close", "volume", "delta"}
 if not required_cols.issubset(df.columns):
     st.error(f"Kolommen ontbreken: {required_cols - set(df.columns)}")
-    st.write("Kolommen:", df.columns.tolist())
     st.stop()
 
+# Datum als datetime
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
-df = df.dropna(subset=["date"])
-
-# === Datumfilter ===
-date_min = df["date"].min()
-date_max = df["date"].max()
-
-start_date, end_date = st.date_input(
-    "Selecteer datumrange",
-    value=(date_min, date_max),
-    min_value=date_min,
-    max_value=date_max,
-    format="YYYY-MM-DD"
-)
-
-mask = (df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))
-df_filtered = df.loc[mask].copy()
-
-if df_filtered.empty:
-    st.warning("Geen data binnen de geselecteerde periode.")
-    st.stop()
-
-# === Heikin-Ashi berekening ===
-df_ha = df_filtered.copy()
-df_ha["ha_close"] = (df_ha["open"] + df_ha["high"] + df_ha["low"] + df_ha["close"]) / 4
-ha_open = [(df_ha["open"].iloc[0] + df_ha["close"].iloc[0]) / 2]
-for i in range(1, len(df_ha)):
-    ha_open.append((ha_open[i - 1] + df_ha["ha_close"].iloc[i - 1]) / 2)
-df_ha["ha_open"] = ha_open
-df_ha["ha_high"] = df_ha[["high", "ha_open", "ha_close"]].max(axis=1)
-df_ha["ha_low"] = df_ha[["low", "ha_open", "ha_close"]].min(axis=1)
+df = df.dropna(subset=["date"]).sort_values("date")
 
 # === EMA & crossover berekening ===
-df_ha["ema_20"] = df_ha["close"].ewm(span=20, adjust=False).mean()
-df_ha["ema_50"] = df_ha["close"].ewm(span=50, adjust=False).mean()
-df_ha["crossover"] = df_ha["ema_20"] - df_ha["ema_50"]
+df["ema_20"] = df["close"].ewm(span=20, adjust=False).mean()
+df["ema_50"] = df["close"].ewm(span=50, adjust=False).mean()
+df["crossover"] = df["ema_20"] - df["ema_50"]
+df["signal"] = 0
+df.loc[df["crossover"] > 0, "signal"] = 1
+df.loc[df["crossover"] < 0, "signal"] = -1
+df["cross_up"] = (df["signal"].diff() == 2)
+df["cross_down"] = (df["signal"].diff() == -2)
 
-# Crossover-signalen
-df_ha["signal"] = 0
-df_ha.loc[df_ha["crossover"] > 0, "signal"] = 1  # bullish
-df_ha.loc[df_ha["crossover"] < 0, "signal"] = -1  # bearish
+# === Datum slider selectie ===
+min_date = df["date"].min()
+max_date = df["date"].max()
 
-df_ha["cross_up"] = (df_ha["signal"].diff() == 2)
-df_ha["cross_down"] = (df_ha["signal"].diff() == -2)
+# Slider met indexwaarden, niet datumobjecten
+date_range = df["date"].tolist()
+start_idx, end_idx = st.slider(
+    "Selecteer datumrange",
+    min_value=0,
+    max_value=len(date_range) - 1,
+    value=(0, len(date_range) - 1),
+    format="%d",
+    step=1
+)
 
-# === Hoofdgrafiek met EMA's en crossovers ===
+df_filtered = df.iloc[start_idx:end_idx+1].copy()
+if df_filtered.empty:
+    st.warning("Geen data binnen geselecteerde periode.")
+    st.stop()
+
+# === Candlestick chart ===
 fig = go.Figure()
 
 fig.add_trace(go.Candlestick(
-    x=df_ha["date"],
-    open=df_ha["ha_open"],
-    high=df_ha["ha_high"],
-    low=df_ha["ha_low"],
-    close=df_ha["ha_close"],
-    name="Heikin-Ashi"
+    x=df_filtered["date"],
+    open=df_filtered["open"],
+    high=df_filtered["high"],
+    low=df_filtered["low"],
+    close=df_filtered["close"],
+    name="OHLC",
 ))
 
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_20"], mode="lines", name="EMA 20"))
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_50"], mode="lines", name="EMA 50"))
+fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_20"], mode="lines", name="EMA 20"))
+fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_50"], mode="lines", name="EMA 50"))
 
-# Crossover bolletjes
+# Crossovers
 fig.add_trace(go.Scatter(
-    x=df_ha[df_ha["cross_up"]]["date"],
-    y=df_ha[df_ha["cross_up"]]["close"],
+    x=df_filtered[df_filtered["cross_up"]]["date"],
+    y=df_filtered[df_filtered["cross_up"]]["close"],
     mode="markers",
     marker=dict(color="green", size=10),
-    name="Bullish Crossover"
+    name="Bullish crossover"
 ))
-
 fig.add_trace(go.Scatter(
-    x=df_ha[df_ha["cross_down"]]["date"],
-    y=df_ha[df_ha["cross_down"]]["close"],
+    x=df_filtered[df_filtered["cross_down"]]["date"],
+    y=df_filtered[df_filtered["cross_down"]]["close"],
     mode="markers",
     marker=dict(color="red", size=10),
-    name="Bearish Crossover"
+    name="Bearish crossover"
 ))
 
 fig.update_layout(
-    title="S&P 500 met Heikin-Ashi, EMA's & Crossovers",
+    title="S&P 500 met EMA's en crossovers",
     xaxis_title="Datum",
     yaxis_title="Prijs",
     xaxis_rangeslider_visible=False,
-    height=700
+    height=600
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# === Volume-grafiek ===
+# === Volume grafiek ===
 st.subheader("📊 Volume")
 fig_vol = go.Figure()
-fig_vol.add_trace(go.Bar(x=df_ha["date"], y=df_ha["volume"], name="Volume"))
-fig_vol.update_layout(xaxis_title="Datum", yaxis_title="Volume", height=300)
+fig_vol.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["volume"], name="Volume"))
+fig_vol.update_layout(xaxis_title="Datum", yaxis_title="Volume", height=250)
 st.plotly_chart(fig_vol, use_container_width=True)
 
-# === Delta-grafiek ===
+# === Delta grafiek ===
 st.subheader("📈 Delta (dagelijkse koersverandering)")
 fig_delta = go.Figure()
-fig_delta.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["delta"], mode="lines", name="Delta"))
-fig_delta.update_layout(xaxis_title="Datum", yaxis_title="Δ Prijs", height=300)
+fig_delta.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["delta"], mode="lines", name="Delta"))
+fig_delta.update_layout(xaxis_title="Datum", yaxis_title="Δ Prijs", height=250)
 st.plotly_chart(fig_delta, use_container_width=True)

@@ -128,22 +128,33 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
 
     st.altair_chart(combined_chart, use_container_width=True)
 
-# Implied Volatility + VIX
+# ✅ IV & VIX met onafhankelijke assen
 with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", expanded=True):
     if "implied_volatility" in df.columns and df["implied_volatility"].notna().any():
         df_iv = df[["formatted_date", "implied_volatility", "vix"]].dropna()
-        melted_iv = df_iv.melt(id_vars="formatted_date", value_vars=["implied_volatility", "vix"], var_name="Type", value_name="Waarde")
 
-        iv_chart = alt.Chart(melted_iv).mark_line(point=True).encode(
-            x=alt.X("formatted_date:T", title="Peildatum (datum)"),
-            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(domain=get_dynamic_scale(melted_iv["Waarde"]))),
-            color=alt.Color("Type:N", title="Legenda", scale=alt.Scale(scheme="set1")),
-            tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
-        ).properties(height=300)
+        iv_line = alt.Chart(df_iv).mark_line(point=True).encode(
+            x="formatted_date:T",
+            y=alt.Y("implied_volatility:Q", title="IV (linkeras)", scale=alt.Scale(domain=get_dynamic_scale(df_iv["implied_volatility"]))),
+            color=alt.value("red"),
+            tooltip=["formatted_date:T", "implied_volatility"]
+        )
 
-        st.altair_chart(iv_chart, use_container_width=True)
+        vix_line = alt.Chart(df_iv).mark_line(point=True).encode(
+            x="formatted_date:T",
+            y=alt.Y("vix:Q", axis=alt.Axis(title="VIX (rechteras)", orient="right"), scale=alt.Scale(domain=get_dynamic_scale(df_iv["vix"]))),
+            color=alt.value("blue"),
+            tooltip=["formatted_date:T", "vix"]
+        )
 
-# Analyse van Optiewaarden
+        chart = alt.layer(iv_line, vix_line).resolve_scale(y='independent').properties(
+            height=300,
+            title="Implied Volatility (IV) en VIX"
+        )
+
+        st.altair_chart(chart, use_container_width=True)
+
+# ✅ Analyse met dubbele y-as voor PPD/intrinsiek & tijdswaarde
 with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded=True):
     analyse_kolommen = ["formatted_date"]
     for kolom in ["intrinsieke_waarde", "tijdswaarde", "ppd"]:
@@ -158,14 +169,23 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
         if not analysis_df.empty:
             melted_df = analysis_df.melt(id_vars="formatted_date", value_vars=analyse_kolommen[1:], var_name="Type", value_name="Waarde")
 
-            base_analysis = alt.Chart(melted_df).encode(
-                x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
-                y=alt.Y("Waarde:Q", scale=alt.Scale(domain=get_dynamic_scale(melted_df["Waarde"]))),
-                color=alt.Color("Type:N", title="Type", scale=alt.Scale(scheme="tableau10")),
+            base = alt.Chart(melted_df).encode(
+                x=alt.X("formatted_date:T", title="Peildatum (datum)")
+            )
+
+            left = base.transform_filter("datum.Type != 'tijdswaarde'").mark_line(point=True).encode(
+                y=alt.Y("Waarde:Q", scale=alt.Scale(domain=get_dynamic_scale(melted_df[melted_df["Type"] != "tijdswaarde"]["Waarde"]))),
+                color=alt.Color("Type:N", scale=alt.Scale(scheme="set1")),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
             )
 
-            chart = base_analysis.mark_line(point=True).properties(
+            right = base.transform_filter("datum.Type == 'tijdswaarde'").mark_line(point=True).encode(
+                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde", orient="right"), scale=alt.Scale(domain=get_dynamic_scale(melted_df[melted_df["Type"] == "tijdswaarde"]["Waarde"]))),
+                color=alt.Color("Type:N", scale=alt.Scale(scheme="set1")),
+                tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
+            )
+
+            chart = alt.layer(left, right).resolve_scale(y='independent').properties(
                 height=400,
                 title="Tijdswaarde en premium per dag (PPD)"
             )
