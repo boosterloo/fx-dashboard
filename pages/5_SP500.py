@@ -30,14 +30,14 @@ while True:
     all_data.extend(data)
     offset += batch_size
 
-# 🧹 DataFrame voorbereiden
+# 🥳 DataFrame voorbereiden
 df = pd.DataFrame(all_data)
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
 df = df.dropna(subset=["date", "open", "high", "low", "close", "delta"])
 df = df.sort_values("date")
 df["date"] = df["date"].dt.date
 
-# 📅 Slider
+# 🗕️ Slider
 min_date = df["date"].min()
 max_date = df["date"].max()
 start_date, end_date = st.slider(
