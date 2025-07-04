@@ -19,11 +19,12 @@ if df is None or df.empty:
     st.warning("Geen data beschikbaar.")
     st.stop()
 
-# Datumkolom verwerken
-df["date"] = pd.to_datetime(df["date"], errors="coerce")
+# === Datumkolom goed formatteren ===
+df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date  # alleen datumdeel
 df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+df["date"] = pd.to_datetime(df["date"])  # zet terug naar datetime64 (zonder tijd)
 
-# === Datumschuifregelaar ===
+# === Slider instellen ===
 min_date = df["date"].min().date()
 max_date = df["date"].max().date()
 default_start = (df["date"].max() - pd.DateOffset(years=3)).date()
@@ -36,17 +37,22 @@ start_date, end_date = st.slider(
     format="YYYY-MM-DD"
 )
 
-# Filteren op gekozen datumrange
+# === Data filteren op slider
 df_filtered = df[
     (df["date"] >= pd.to_datetime(start_date)) &
     (df["date"] <= pd.to_datetime(end_date))
 ].copy()
 
-if df_filtered.empty:
-    st.warning("Geen data in de geselecteerde periode.")
+# === Controle: genoeg data?
+if df_filtered.empty or len(df_filtered) < 2:
+    st.warning("Niet genoeg datapunten in deze periode om iets te tonen.")
     st.stop()
 
-# === Slotkoersgrafiek ===
+# === Extra debug info (optioneel)
+# st.write("Aantal datapunten:", len(df_filtered))
+# st.write(df_filtered[["date", "close"]].tail())
+
+# === Plot: lijn grafiek van slotkoers ===
 fig = px.line(
     df_filtered,
     x="date",
