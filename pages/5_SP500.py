@@ -40,13 +40,12 @@ df["date"] = df["date"].dt.date
 # 🗕️ Slider
 min_date = df["date"].min()
 max_date = df["date"].max()
-start_date, end_date = st.slider(
-    "Selecteer datumrange",
-    min_value=min_date,
-    max_value=max_date,
-    value=(min_date, max_date),
-    format="YYYY-MM-DD"
-)
+col1, col2 = st.columns(2)
+with col1:
+    start_date = st.date_input("Startdatum", min_value=min_date, max_value=max_date, value=min_date)
+with col2:
+    end_date = st.date_input("Einddatum", min_value=min_date, max_value=max_date, value=max_date)
+
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
 # ========== 📈 Deel 1: TA Grafieken ==========
@@ -113,3 +112,21 @@ fig_hist.update_layout(
     bargap=0.1
 )
 st.plotly_chart(fig_hist, use_container_width=True)
+
+# ========== 📈 Deel 3: Statistieken ==========
+st.subheader("📊 Statistieken van Delta")
+avg_delta = df_filtered["delta"].mean()
+std_delta = df_filtered["delta"].std()
+positive_days = (df_filtered["delta"] > 0).sum()
+negative_days = (df_filtered["delta"] < 0).sum()
+rolling_volatility = df_filtered["delta"].rolling(window=14).std()
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Gemiddelde Delta", f"{avg_delta:.4f}")
+col2.metric("Standaarddeviatie Delta", f"{std_delta:.4f}")
+col3.metric("+ / - Dagen", f"{positive_days} / {negative_days}")
+
+fig_vol = go.Figure()
+fig_vol.add_trace(go.Scatter(x=df_filtered["date"], y=rolling_volatility, mode="lines", name="Rolling Volatility (14d)", line=dict(color="gray")))
+fig_vol.update_layout(title="📉 Rolling Volatility (14-daags)", xaxis_title="Datum", yaxis_title="Volatiliteit")
+st.plotly_chart(fig_vol, use_container_width=True)
