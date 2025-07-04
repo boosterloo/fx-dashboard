@@ -1,48 +1,44 @@
-# 5_SP500.py
-
 import streamlit as st
 import pandas as pd
-from datetime import date
-from supabase import create_client, Client
-import plotly.express as px
-
-st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
-
-# Titel
-st.title("📈 S&P 500 Dashboard")
+import altair as alt
+from supabase import create_client
+from datetime import datetime
 
 # Supabase instellingen
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
-supabase: Client = create_client(url, key)
+supabase = create_client(url, key)
 
-# Data ophalen
-@st.cache_data
-def load_data():
-    response = supabase.table("sp500_data").select("*").execute()
-    df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"]).dt.date  # Convert to datetime.date
-    df = df.sort_values("date")
-    return df
+# Ophalen van data vanaf 2010
+response = supabase.table("sp500").select("*").gte("date", "2010-01-01").execute()
+data = pd.DataFrame(response.data)
 
-df = load_data()
+# Omzetten van datum
+data["date"] = pd.to_datetime(data["date"])
+data = data.sort_values("date")
 
-# Slider voor datumrange
-min_date = min(df["date"])
-max_date = max(df["date"])
+# Controle: laat enkele rijen zien
+st.write(data.head())
 
+# Datumrange slider
 start_date, end_date = st.slider(
     "Selecteer datumrange",
-    min_value=min_date,
-    max_value=max_date,
-    value=(min_date, max_date),
+    min_value=data["date"].min().date(),
+    max_value=data["date"].max().date(),
+    value=(data["date"].min().date(), data["date"].max().date()),
     format="YYYY-MM-DD"
 )
 
-# Filter de data op geselecteerde range
-filtered_df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+# Filter op geselecteerde datumrange
+filtered_data = data[(data["date"] >= pd.to_datetime(start_date)) & (data["date"] <= pd.to_datetime(end_date))]
 
-# Plot slotkoers
-fig = px.line(filtered_df, x="date", y="close", title="S&P 500 Slotkoers", labels={"date": "Datum", "close": "Slotkoers"})
-fig.update_traces(line=dict(color="royalblue", width=1))
-st.plotly_chart(fig, use_container_width=True)
+# Plot maken
+chart = alt.Chart(filtered_data).mark_line(color="blue").encode(
+    x=alt.X("date:T", title="Datum"),
+    y=alt.Y("close:Q", title="Slotkoers"),
+    tooltip=["date:T", "close:Q"]
+).properties(
+    title="S&P 500 Slotkoers"
+)
+
+st.altair_chart(chart, use_container_width=True)
