@@ -92,9 +92,9 @@ is_put = df["type"] == "put"
 df["intrinsieke_waarde"] = (df["strike"] - df["underlying_price"]).clip(lower=0).where(is_put, (df["underlying_price"] - df["strike"]).clip(lower=0))
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
 
-# Dynamisch bereik berekenen voor alle y-assen
-y_min = df["underlying_price"].min() * 0.98
-y_max = df["underlying_price"].max() * 1.02
+# Dynamisch bereik helper
+def get_dynamic_scale(series):
+    return [series.min() * 0.98, series.max() * 1.02]
 
 # ✅ Eén gecombineerde grafiek met dynamisch geschaalde tweede y-as (S&P)
 with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie", expanded=True):
@@ -106,7 +106,7 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         ["bid", "ask", "last_price"],
         as_=["Type", "Prijs"]
     ).mark_line(point=alt.OverlayMarkDef(filled=True, size=100)).encode(
-        y=alt.Y("Prijs:Q", title="Optieprijs (linkeras)", scale=alt.Scale(nice=True)),
+        y=alt.Y("Prijs:Q", title="Optieprijs (linkeras)", scale=alt.Scale(domain=get_dynamic_scale(df[["bid", "ask", "last_price"]].values.flatten()))),
         color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
     )
@@ -115,7 +115,7 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         y=alt.Y(
             "underlying_price:Q",
             axis=alt.Axis(title="S&P Koers (rechteras)", orient="right"),
-            scale=alt.Scale(domain=[y_min, y_max])
+            scale=alt.Scale(domain=get_dynamic_scale(df["underlying_price"]))
         ),
         color=alt.value("gray"),
         tooltip=["formatted_date:T", "underlying_price:Q"]
@@ -136,7 +136,7 @@ with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", ex
 
         iv_chart = alt.Chart(melted_iv).mark_line(point=True).encode(
             x=alt.X("formatted_date:T", title="Peildatum (datum)"),
-            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(domain=[melted_iv["Waarde"].min()*0.98, melted_iv["Waarde"].max()*1.02])),
+            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(domain=get_dynamic_scale(melted_iv["Waarde"]))),
             color=alt.Color("Type:N", title="Legenda", scale=alt.Scale(scheme="set1")),
             tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
         ).properties(height=300)
@@ -165,11 +165,11 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
             )
 
             y_left = base_analysis.transform_filter(alt.datum.Type != "tijdswaarde").mark_line(point=True).encode(
-                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(domain=[melted_df["Waarde"].min()*0.98, melted_df["Waarde"].max()*1.02]))
+                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(domain=get_dynamic_scale(melted_df[melted_df.Type != "tijdswaarde"]["Waarde"])))
             )
 
             y_right = base_analysis.transform_filter(alt.datum.Type == "tijdswaarde").mark_line(point=True).encode(
-                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(domain=[melted_df["Waarde"].min()*0.98, melted_df["Waarde"].max()*1.02]))
+                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(domain=get_dynamic_scale(melted_df[melted_df.Type == "tijdswaarde"]["Waarde"])))
             )
 
             chart = alt.layer(y_left, y_right).resolve_scale(y="independent").properties(
