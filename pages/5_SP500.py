@@ -1,23 +1,32 @@
 import streamlit as st
 import pandas as pd
+from supabase import create_client
+from datetime import datetime
+from dotenv import load_dotenv
+import os
 import plotly.express as px
-from utils import supabase
 
-# Titel
-st.title("📈 S&P 500 Dashboard")
+# 🔄 Laad omgevingsvariabelen
+load_dotenv()
+url = os.getenv("SUPABASE_URL")
+key = os.getenv("SUPABASE_KEY")
+supabase = create_client(url, key)
 
-# Data ophalen
-response = supabase.table("sp500_data").select("*").gte("date", "2010-01-01").execute()
+# 🚀 Haal alle data op
+response = supabase.table("sp500_data").select("*").execute()
 data = pd.DataFrame(response.data)
 
-# Datumkolom goed zetten
+# ⏰ Zorg dat 'date' kolom datetime-formaat heeft
 data["date"] = pd.to_datetime(data["date"])
 
-# Zet datumwaarden naar date objecten voor slider
-min_date = data["date"].min().date()
-max_date = data["date"].max().date()
+# 🔽 Zet op volgorde van oud naar nieuw
+data = data.sort_values("date")
 
-# Slider voor datumbereik
+# 📅 Slider op basis van volledige data
+min_date = data["date"].min()
+max_date = data["date"].max()
+
+# 🎛️ Slider
 start_date, end_date = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
@@ -26,12 +35,9 @@ start_date, end_date = st.slider(
     format="YYYY-MM-DD"
 )
 
-# Filter de data
-filtered_data = data[
-    (data["date"] >= pd.to_datetime(start_date)) &
-    (data["date"] <= pd.to_datetime(end_date))
-]
+# 🔍 Filter op selectie
+filtered = data[(data["date"] >= start_date) & (data["date"] <= end_date)]
 
-# Plot
-fig = px.line(filtered_data, x="date", y="close", title="S&P 500 Slotkoers", labels={"close": "Slotkoers", "date": "Datum"})
+# 📊 Plot
+fig = px.line(filtered, x="date", y="close", labels={"date": "Datum", "close": "Slotkoers"}, title="S&P 500 Slotkoers")
 st.plotly_chart(fig, use_container_width=True)
