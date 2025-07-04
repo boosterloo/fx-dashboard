@@ -1,32 +1,22 @@
 import streamlit as st
-from supabase import create_client
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
-
-# Config
-st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
-
-# Supabase secrets
-url = st.secrets["supabase"]["url"]
-key = st.secrets["supabase"]["key"]
-supabase = create_client(url, key)
+from utils import supabase  # ← gebruik de bestaande Supabase-client
 
 # Titel
 st.title("📈 S&P 500 Dashboard")
 
-# Data ophalen vanaf 2010 (i.v.m. betrouwbaarheid en performance)
+# Data ophalen vanaf 2010
 response = supabase.table("sp500_data").select("*").gte("date", "2010-01-01").execute()
-df = pd.DataFrame(response.data)
+data = pd.DataFrame(response.data)
 
-# Data goed formatteren
-df['date'] = pd.to_datetime(df['date'])
-df = df.sort_values('date')
-df['close'] = pd.to_numeric(df['close'], errors='coerce')
+# Datumkolom goed zetten
+data["date"] = pd.to_datetime(data["date"])
 
-# Datumrange slider
-min_date = df['date'].min()
-max_date = df['date'].max()
+# Slider voor datumbereik
+min_date = data["date"].min()
+max_date = data["date"].max()
+
 start_date, end_date = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
@@ -35,10 +25,9 @@ start_date, end_date = st.slider(
     format="YYYY-MM-DD"
 )
 
-# Filteren op geselecteerde datumrange
-filtered_df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+# Filter de data
+filtered_data = data[(data["date"] >= start_date) & (data["date"] <= end_date)]
 
-# Plot slotkoers
-st.subheader("S&P 500 Slotkoers")
-fig = px.line(filtered_df, x='date', y='close', labels={"date": "Datum", "close": "Slotkoers"}, template="plotly_white")
+# Plot
+fig = px.line(filtered_data, x="date", y="close", title="S&P 500 Slotkoers", labels={"close": "Slotkoers", "date": "Datum"})
 st.plotly_chart(fig, use_container_width=True)
