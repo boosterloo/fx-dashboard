@@ -1,100 +1,48 @@
-import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
-from supabase import create_client
-from datetime import datetime
-import os
-from dotenv import load_dotenv
 
-# === 1. Setup en Supabase connectie ===
-load_dotenv()
-url = os.getenv("SUPABASE_URL")
-key = os.getenv("SUPABASE_KEY")
-supabase = create_client(url, key)
+# Simuleer een voorbeeld dataframe met datum en slotkoers
+np.random.seed(42)
+dates = pd.date_range(start="2024-01-01", periods=100)
+close_prices = np.cumsum(np.random.randn(100)) + 100
+df = pd.DataFrame({'date': dates, 'close': close_prices})
 
-# === 2. Data ophalen in chunks ===
-data = []
-batch_size = 1000
-offset = 0
-while True:
-    response = (
-        supabase.table("sp500_data")
-        .select("*")
-        .range(offset, offset + batch_size - 1)
-        .execute()
-    )
-    batch = response.data
-    if not batch:
-        break
-    data.extend(batch)
-    offset += batch_size
+# Bereken Heikin Ashi waarden
+df['open_ha'] = (df['close'].shift(1) + df['close'].shift(1)) / 2
+df['close_ha'] = (df['close'] + df['close'].shift(1)) / 2
+df['high_ha'] = df[['close', 'close_ha', 'open_ha']].max(axis=1)
+df['low_ha'] = df[['close', 'close_ha', 'open_ha']].min(axis=1)
 
-# === 3. Data voorbereiden ===
-df = pd.DataFrame(data)
-df["date"] = pd.to_datetime(df["date"], errors="coerce")
-df = df.dropna(subset=["date", "close", "delta"])
-df = df.sort_values("date")
+# Bereken EMA's
+df['EMA_5'] = df['close'].ewm(span=5, adjust=False).mean()
+df['EMA_15'] = df['close'].ewm(span=15, adjust=False).mean()
+df['EMA_30'] = df['close'].ewm(span=30, adjust=False).mean()
 
-# EMA's berekenen
-df["ema_8"] = df["close"].ewm(span=8, adjust=False).mean()
-df["ema_21"] = df["close"].ewm(span=21, adjust=False).mean()
-df["ema_55"] = df["close"].ewm(span=55, adjust=False).mean()
+# Plot HA + EMA
+fig = go.Figure(data=[
+    go.Candlestick(
+        x=df['date'],
+        open=df['open_ha'],
+        high=df['high_ha'],
+        low=df['low_ha'],
+        close=df['close_ha'],
+        increasing_line_color='cyan',
+        decreasing_line_color='red',
+        name='Heikin Ashi'
+    ),
+    go.Scatter(x=df['date'], y=df['EMA_5'], line=dict(color='blue', width=1), name='EMA 5'),
+    go.Scatter(x=df['date'], y=df['EMA_15'], line=dict(color='orange', width=1), name='EMA 15'),
+    go.Scatter(x=df['date'], y=df['EMA_30'], line=dict(color='red', width=1), name='EMA 30')
+])
 
-# Heikin-Ashi berekening
-df["open"] = df["close"] - 1.0  # ruwe benadering voor voorbeeld
-df["high"] = df[["open", "close"]].max(axis=1) + 0.5
-df["low"] = df[["open", "close"]].min(axis=1) - 0.5
-df["ha_close"] = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
-ha_open = [(df["open"].iloc[0] + df["close"].iloc[0]) / 2]
-for i in range(1, len(df)):
-    ha_open.append((ha_open[i - 1] + df["ha_close"].iloc[i - 1]) / 2)
-df["ha_open"] = ha_open
-df["ha_high"] = df[["high", "ha_open", "ha_close"]].max(axis=1)
-df["ha_low"] = df[["low", "ha_open", "ha_close"]].min(axis=1)
-
-# === 4. Streamlit layout en filters ===
-st.set_page_config(layout="wide")
-st.title("\U0001F4C8 S&P 500 Dashboard")
-
-min_date = df["date"].min().date()
-max_date = df["date"].max().date()
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    start_date, end_date = st.slider("Selecteer datumrange", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD")
-with col2:
-    st.write(":calendar: Geselecteerd: ")
-    st.date_input("Startdatum", value=start_date, key="start_manual")
-    st.date_input("Einddatum", value=end_date, key="end_manual")
-
-# Filteren op datum
-df_filtered = df[(df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)]
-
-# === 5. Slotkoers en delta grafiek ===
-colors = ["green" if d > 0 else "red" for d in df_filtered["delta"]]
-fig1 = go.Figure()
-fig1.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["close"], mode="lines", name="Slotkoers", line=dict(color="blue")))
-fig1.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["delta"], marker_color=colors, name="Delta", yaxis="y2", opacity=0.4))
-fig1.update_layout(
-    title="S&P 500 Slotkoers + Dagelijkse Delta",
+fig.update_layout(
+    title="Heikin Ashi + EMA",
     xaxis_title="Datum",
-    yaxis=dict(title="Slotkoers", side="left"),
-    yaxis2=dict(title="Delta", overlaying="y", side="right", showgrid=False),
-    height=500
+    yaxis_title="Prijs",
+    height=500,
+    width=1000,
+    xaxis_rangeslider_visible=False
 )
-st.plotly_chart(fig1, use_container_width=True)
 
-# === 6. Heikin-Ashi + EMA grafiek ===
-fig2 = go.Figure()
-fig2.add_trace(go.Candlestick(x=df_filtered["date"], open=df_filtered["ha_open"], high=df_filtered["ha_high"], low=df_filtered["ha_low"], close=df_filtered["ha_close"], name="Heikin-Ashi"))
-fig2.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_8"], mode="lines", name="EMA 8"))
-fig2.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_21"], mode="lines", name="EMA 21"))
-fig2.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_55"], mode="lines", name="EMA 55"))
-fig2.update_layout(title="Heikin-Ashi Candles + EMA's", xaxis_title="Datum", yaxis_title="Prijs", height=500)
-st.plotly_chart(fig2, use_container_width=True)
-
-# === 7. Histogram van delta ===
-fig3 = go.Figure()
-fig3.add_trace(go.Histogram(x=df_filtered["delta"], nbinsx=50, marker_color="skyblue"))
-fig3.update_layout(title="Histogram van Dagelijkse Delta", xaxis_title="Delta", yaxis_title="Frequentie", height=400)
-st.plotly_chart(fig3, use_container_width=True)
+fig.show()
