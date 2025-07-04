@@ -9,19 +9,28 @@ st.title("📈 S&P 500 Dashboard")
 # === Data ophalen ===
 df = get_supabase_data("sp500_data")
 
-# Controleer op geldigheid
+# === Validatie & Cleanup ===
 if df is None or not isinstance(df, pd.DataFrame) or df.empty:
     st.warning("Geen data beschikbaar.")
     st.stop()
 
+# Zorg dat kolommen correct zijn
+required_cols = {"date", "open", "high", "low", "close"}
+if not required_cols.issubset(df.columns):
+    st.error(f"Vereiste kolommen ontbreken in de data: {required_cols - set(df.columns)}")
+    st.stop()
+
+# Zet 'date' om naar datetime
+df["date"] = pd.to_datetime(df["date"], errors='coerce')
+df = df.dropna(subset=["date"])
+
 # === Datumfilter ===
-df["date"] = pd.to_datetime(df["date"])
 date_min = df["date"].min()
 date_max = df["date"].max()
 
 start_date, end_date = st.date_input(
     "Selecteer datumrange",
-    value=[date_min, date_max],
+    value=(date_min, date_max),
     min_value=date_min,
     max_value=date_max,
     format="YYYY-MM-DD"
@@ -48,7 +57,7 @@ df_ha["ha_low"] = df_ha[["low", "ha_open", "ha_close"]].min(axis=1)
 df_ha["ema_20"] = df_ha["close"].ewm(span=20, adjust=False).mean()
 df_ha["ema_50"] = df_ha["close"].ewm(span=50, adjust=False).mean()
 
-# === Grafiek ===
+# === Plotten ===
 fig = go.Figure()
 
 fig.add_trace(go.Candlestick(
