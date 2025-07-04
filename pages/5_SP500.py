@@ -16,47 +16,45 @@ if df is None or df.empty:
     st.warning("Geen data beschikbaar uit Supabase.")
     st.stop()
 
-# Check op kolommen
-required_cols = {"date", "open", "high", "low", "close", "volume", "delta"}
-if not required_cols.issubset(df.columns):
-    st.error(f"Kolommen ontbreken: {required_cols - set(df.columns)}")
+# Kolomcheck
+required = {"date", "open", "high", "low", "close", "volume", "delta"}
+if not required.issubset(df.columns):
+    st.error(f"Ontbrekende kolommen: {required - set(df.columns)}")
     st.stop()
 
-# Datum als datetime
+# Format & sortering
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
-df = df.dropna(subset=["date"]).sort_values("date")
+df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
-# === EMA & crossover berekening ===
+# EMA & signalen
 df["ema_20"] = df["close"].ewm(span=20, adjust=False).mean()
 df["ema_50"] = df["close"].ewm(span=50, adjust=False).mean()
 df["crossover"] = df["ema_20"] - df["ema_50"]
 df["signal"] = 0
 df.loc[df["crossover"] > 0, "signal"] = 1
 df.loc[df["crossover"] < 0, "signal"] = -1
-df["cross_up"] = (df["signal"].diff() == 2)
-df["cross_down"] = (df["signal"].diff() == -2)
+df["cross_up"] = df["signal"].diff() == 2
+df["cross_down"] = df["signal"].diff() == -2
 
-# === Datum slider selectie ===
+# === Datumschuif op echte datums ===
 min_date = df["date"].min()
 max_date = df["date"].max()
 
-# Slider met indexwaarden, niet datumobjecten
-date_range = df["date"].tolist()
-start_idx, end_idx = st.slider(
+default_start = max_date - pd.DateOffset(years=3)
+start_date, end_date = st.slider(
     "Selecteer datumrange",
-    min_value=0,
-    max_value=len(date_range) - 1,
-    value=(0, len(date_range) - 1),
-    format="%d",
-    step=1
+    min_value=min_date,
+    max_value=max_date,
+    value=(default_start, max_date),
+    format="YYYY-MM-DD"
 )
 
-df_filtered = df.iloc[start_idx:end_idx+1].copy()
+df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
 if df_filtered.empty:
-    st.warning("Geen data binnen geselecteerde periode.")
+    st.warning("Geen data in geselecteerde periode.")
     st.stop()
 
-# === Candlestick chart ===
+# === Candlestick chart met EMA's en crossovers ===
 fig = go.Figure()
 
 fig.add_trace(go.Candlestick(
@@ -71,7 +69,6 @@ fig.add_trace(go.Candlestick(
 fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_20"], mode="lines", name="EMA 20"))
 fig.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["ema_50"], mode="lines", name="EMA 50"))
 
-# Crossovers
 fig.add_trace(go.Scatter(
     x=df_filtered[df_filtered["cross_up"]]["date"],
     y=df_filtered[df_filtered["cross_up"]]["close"],
@@ -88,7 +85,7 @@ fig.add_trace(go.Scatter(
 ))
 
 fig.update_layout(
-    title="S&P 500 met EMA's en crossovers",
+    title="S&P 500 met EMA's en Crossovers",
     xaxis_title="Datum",
     yaxis_title="Prijs",
     xaxis_rangeslider_visible=False,
@@ -100,13 +97,18 @@ st.plotly_chart(fig, use_container_width=True)
 # === Volume grafiek ===
 st.subheader("📊 Volume")
 fig_vol = go.Figure()
-fig_vol.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["volume"], name="Volume"))
+fig_vol.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["volume"].clip(upper=5e9), name="Volume"))
 fig_vol.update_layout(xaxis_title="Datum", yaxis_title="Volume", height=250)
 st.plotly_chart(fig_vol, use_container_width=True)
 
 # === Delta grafiek ===
 st.subheader("📈 Delta (dagelijkse koersverandering)")
 fig_delta = go.Figure()
-fig_delta.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["delta"], mode="lines", name="Delta"))
+fig_delta.add_trace(go.Scatter(
+    x=df_filtered["date"],
+    y=df_filtered["delta"].clip(upper=50, lower=-50),
+    mode="lines",
+    name="Delta"
+))
 fig_delta.update_layout(xaxis_title="Datum", yaxis_title="Δ Prijs", height=250)
 st.plotly_chart(fig_delta, use_container_width=True)
