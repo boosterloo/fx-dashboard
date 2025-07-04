@@ -4,3 +4,4 @@ pandas
 plotly
 supabase
 python-dotenv
+seaborn
