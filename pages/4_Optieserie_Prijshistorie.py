@@ -37,29 +37,25 @@ def get_unique_values_chunked(table_name, column, batch_size=1000):
     return sorted(all_values)
 
 @st.cache_data(ttl=3600)
-def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strike=None, batch_size=1000):
-    offset = 0
-    all_data = []
-    while True:
-        try:
-            query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, vix, type, expiration, strike, ppd").range(offset, offset + batch_size - 1)
-            response = query.execute()
-            if not response.data:
-                break
-            for row in response.data:
-                if (type_optie is None or row.get("type") == type_optie) and \
-                   (expiration is None or row.get("expiration") == expiration) and \
-                   (strike is None or row.get("strike") == strike):
-                    all_data.append(row)
-            offset += batch_size
-        except Exception as e:
-            st.error(f"Fout bij ophalen van data: {e}")
-            break
-    df = pd.DataFrame(all_data)
-    if not df.empty and "snapshot_date" in df.columns:
-        df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
-        df = df.sort_values("snapshot_date")
-    return df
+def fetch_filtered_option_data(table_name, type_optie=None, expiration=None, strike=None):
+    query = supabase.table(table_name).select("snapshot_date, bid, ask, last_price, implied_volatility, underlying_price, vix, type, expiration, strike, ppd")
+    if type_optie:
+        query = query.eq("type", type_optie)
+    if expiration:
+        query = query.eq("expiration", expiration)
+    if strike:
+        query = query.eq("strike", strike)
+
+    try:
+        response = query.execute()
+        df = pd.DataFrame(response.data)
+        if not df.empty and "snapshot_date" in df.columns:
+            df["snapshot_date"] = pd.to_datetime(df["snapshot_date"], utc=True, errors="coerce")
+            df = df.sort_values("snapshot_date")
+        return df
+    except Exception as e:
+        st.error(f"Fout bij ophalen van data: {e}")
+        return pd.DataFrame()
 
 st.title(":chart_with_upwards_trend: Prijsontwikkeling van een Optieserie")
 
@@ -90,8 +86,15 @@ date_range = st.slider("Selecteer peildatum range", min_value=min_date, max_valu
 df = df[(df["snapshot_date"].dt.date >= date_range[0]) & (df["snapshot_date"].dt.date <= date_range[1])]
 
 underlying = df["underlying_price"].iloc[-1] if "underlying_price" in df.columns else None
-df["intrinsieke_waarde"] = df.apply(lambda row: max(0, row["strike"] - row["underlying_price"]) if row["type"] == "put" else max(0, row["underlying_price"] - row["strike"]), axis=1)
+
+# Vectorized berekeningen
+is_put = df["type"] == "put"
+df["intrinsieke_waarde"] = (df["strike"] - df["underlying_price"]).clip(lower=0).where(is_put, (df["underlying_price"] - df["strike"]).clip(lower=0))
 df["tijdswaarde"] = df["last_price"] - df["intrinsieke_waarde"]
+
+# Dynamisch bereik berekenen voor alle y-assen
+y_min = df["underlying_price"].min() * 0.98
+y_max = df["underlying_price"].max() * 1.02
 
 # ✅ Eén gecombineerde grafiek met dynamisch geschaalde tweede y-as (S&P)
 with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie", expanded=True):
@@ -107,9 +110,6 @@ with st.expander(":chart_with_upwards_trend: Prijsontwikkeling van de Optieserie
         color=alt.Color("Type:N", title="Prijssoort", scale=alt.Scale(scheme="category10")),
         tooltip=["formatted_date:T", "Type:N", "Prijs:Q"]
     )
-
-    y_min = df["underlying_price"].min() * 0.98
-    y_max = df["underlying_price"].max() * 1.02
 
     sp_line = base.mark_line(strokeDash=[4, 4]).encode(
         y=alt.Y(
@@ -136,7 +136,7 @@ with st.expander(":chart_with_upwards_trend: Implied Volatility (IV) en VIX", ex
 
         iv_chart = alt.Chart(melted_iv).mark_line(point=True).encode(
             x=alt.X("formatted_date:T", title="Peildatum (datum)"),
-            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(nice=True)),
+            y=alt.Y("Waarde:Q", title="Waarde", scale=alt.Scale(domain=[melted_iv["Waarde"].min()*0.98, melted_iv["Waarde"].max()*1.02])),
             color=alt.Color("Type:N", title="Legenda", scale=alt.Scale(scheme="set1")),
             tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
         ).properties(height=300)
@@ -165,11 +165,11 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
             )
 
             y_left = base_analysis.transform_filter(alt.datum.Type != "tijdswaarde").mark_line(point=True).encode(
-                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(nice=True))
+                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(domain=[melted_df["Waarde"].min()*0.98, melted_df["Waarde"].max()*1.02]))
             )
 
             y_right = base_analysis.transform_filter(alt.datum.Type == "tijdswaarde").mark_line(point=True).encode(
-                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(nice=True))
+                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(domain=[melted_df["Waarde"].min()*0.98, melted_df["Waarde"].max()*1.02]))
             )
 
             chart = alt.layer(y_left, y_right).resolve_scale(y="independent").properties(
