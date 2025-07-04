@@ -49,24 +49,8 @@ start_date, end_date = st.slider(
 )
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
-# ========== 📊 Deel 1: HISTOGRAM van Delta ==========
-st.subheader("📊 Histogram van dagelijkse delta’s")
-fig_hist = go.Figure()
-fig_hist.add_trace(go.Histogram(
-    x=df_filtered["delta"],
-    nbinsx=40,
-    marker_color="orange",
-    name="Delta verdeling"
-))
-fig_hist.update_layout(
-    xaxis_title="Delta",
-    yaxis_title="Frequentie",
-    bargap=0.1
-)
-st.plotly_chart(fig_hist, use_container_width=True)
-
-# ========== 📈 Deel 2: HEIKIN-ASHI + EMA's ==========
-st.subheader("📈 Heikin-Ashi Grafiek met 3 EMA’s")
+# ========== 📈 Deel 1: TA Grafieken ==========
+st.subheader("📈 Technische Analyse: Heikin-Ashi & EMA's")
 
 # Heikin-Ashi berekening
 df_ha = df_filtered.copy()
@@ -83,7 +67,7 @@ df_ha["ema_8"] = df_ha["close"].ewm(span=8, adjust=False).mean()
 df_ha["ema_21"] = df_ha["close"].ewm(span=21, adjust=False).mean()
 df_ha["ema_55"] = df_ha["close"].ewm(span=55, adjust=False).mean()
 
-# Grafiek bouwen
+# Heikin-Ashi grafiek
 fig_ha = go.Figure()
 fig_ha.add_trace(go.Candlestick(
     x=df_ha["date"],
@@ -98,7 +82,6 @@ fig_ha.add_trace(go.Candlestick(
 fig_ha.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_8"], name="EMA 8", line=dict(width=1.5)))
 fig_ha.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_21"], name="EMA 21", line=dict(width=1.5)))
 fig_ha.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_55"], name="EMA 55", line=dict(width=1.5)))
-
 fig_ha.update_layout(
     title="Heikin-Ashi met EMA’s (8, 21, 55)",
     xaxis_title="Datum",
@@ -106,5 +89,20 @@ fig_ha.update_layout(
     xaxis_rangeslider_visible=False,
     height=600
 )
-
 st.plotly_chart(fig_ha, use_container_width=True)
+
+# ========== 📉 Deel 2: Histogram van Delta ==========
+st.subheader("📉 Histogram van dagelijkse delta’s")
+fig_hist = go.Figure()
+fig_hist.add_trace(go.Histogram(
+    x=df_filtered["delta"],
+    nbinsx=40,
+    marker_color="orange",
+    name="Delta verdeling"
+))
+fig_hist.update_layout(
+    xaxis_title="Delta",
+    yaxis_title="Frequentie",
+    bargap=0.1
+)
+st.plotly_chart(fig_hist, use_container_width=True)
