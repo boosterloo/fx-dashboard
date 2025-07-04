@@ -50,7 +50,7 @@ start_date, end_date = st.slider(
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
 # ========== 📈 Deel 1: TA Grafieken ==========
-st.subheader("📈 Technische Analyse: Heikin-Ashi & EMA's")
+st.subheader("📈 Technische Analyse: Heikin-Ashi, EMA's & RSI")
 
 # Heikin-Ashi berekening
 df_ha = df_filtered.copy()
@@ -67,9 +67,19 @@ df_ha["ema_8"] = df_ha["close"].ewm(span=8, adjust=False).mean()
 df_ha["ema_21"] = df_ha["close"].ewm(span=21, adjust=False).mean()
 df_ha["ema_55"] = df_ha["close"].ewm(span=55, adjust=False).mean()
 
-# Heikin-Ashi grafiek
-fig_ha = go.Figure()
-fig_ha.add_trace(go.Candlestick(
+# RSI berekening
+delta = df_ha["close"].diff()
+gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+rs = gain / loss
+df_ha["rsi"] = 100 - (100 / (1 + rs))
+
+# Subplots: Heikin-Ashi en RSI
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                    row_heights=[0.7, 0.3], vertical_spacing=0.05,
+                    subplot_titles=("Heikin-Ashi met EMA’s", "RSI (14-dagen)"))
+
+fig.add_trace(go.Candlestick(
     x=df_ha["date"],
     open=df_ha["ha_open"],
     high=df_ha["ha_high"],
@@ -78,18 +88,15 @@ fig_ha.add_trace(go.Candlestick(
     name="Heikin-Ashi",
     increasing_line_color="green",
     decreasing_line_color="red"
-))
-fig_ha.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_8"], name="EMA 8", line=dict(width=1.5)))
-fig_ha.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_21"], name="EMA 21", line=dict(width=1.5)))
-fig_ha.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_55"], name="EMA 55", line=dict(width=1.5)))
-fig_ha.update_layout(
-    title="Heikin-Ashi met EMA’s (8, 21, 55)",
-    xaxis_title="Datum",
-    yaxis_title="Prijs",
-    xaxis_rangeslider_visible=False,
-    height=600
-)
-st.plotly_chart(fig_ha, use_container_width=True)
+), row=1, col=1)
+fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_8"], name="EMA 8", line=dict(width=1.5)), row=1, col=1)
+fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_21"], name="EMA 21", line=dict(width=1.5)), row=1, col=1)
+fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_55"], name="EMA 55", line=dict(width=1.5)), row=1, col=1)
+
+fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["rsi"], name="RSI", line=dict(color="purple", width=2)), row=2, col=1)
+fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
+fig.update_layout(height=800, xaxis_rangeslider_visible=False)
+st.plotly_chart(fig, use_container_width=True)
 
 # ========== 📉 Deel 2: Histogram van Delta ==========
 st.subheader("📉 Histogram van dagelijkse delta’s")
