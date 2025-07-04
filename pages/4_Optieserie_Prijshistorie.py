@@ -160,19 +160,12 @@ with st.expander(":chart_with_upwards_trend: Analyse van Optiewaarden", expanded
 
             base_analysis = alt.Chart(melted_df).encode(
                 x=alt.X("formatted_date:T", title="Peildatum (datum)", timeUnit="yearmonthdate"),
+                y=alt.Y("Waarde:Q", scale=alt.Scale(domain=get_dynamic_scale(melted_df["Waarde"]))),
                 color=alt.Color("Type:N", title="Type", scale=alt.Scale(scheme="tableau10")),
                 tooltip=["formatted_date:T", "Type:N", "Waarde:Q"]
             )
 
-            y_left = base_analysis.transform_filter(alt.datum.Type != "tijdswaarde").mark_line(point=True).encode(
-                y=alt.Y("Waarde:Q", title="Waarde (PPD & intrinsiek)", scale=alt.Scale(domain=get_dynamic_scale(melted_df[melted_df.Type != "tijdswaarde"]["Waarde"])))
-            )
-
-            y_right = base_analysis.transform_filter(alt.datum.Type == "tijdswaarde").mark_line(point=True).encode(
-                y=alt.Y("Waarde:Q", axis=alt.Axis(title="Tijdswaarde"), scale=alt.Scale(domain=get_dynamic_scale(melted_df[melted_df.Type == "tijdswaarde"]["Waarde"])))
-            )
-
-            chart = alt.layer(y_left, y_right).resolve_scale(y="independent").properties(
+            chart = base_analysis.mark_line(point=True).properties(
                 height=400,
                 title="Tijdswaarde en premium per dag (PPD)"
             )
