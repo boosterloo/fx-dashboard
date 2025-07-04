@@ -1,32 +1,36 @@
+# 5_SP500.py
+
 import streamlit as st
 import pandas as pd
+from datetime import date
 from supabase import create_client, Client
 import plotly.express as px
-import os
 
 st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
+
+# Titel
 st.title("📈 S&P 500 Dashboard")
 
-# Supabase connectie
+# Supabase instellingen
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
+# Data ophalen
 @st.cache_data
 def load_data():
     response = supabase.table("sp500_data").select("*").execute()
     df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], format='%Y-%m-%d')  # Zorg voor consistent datumformaat
+    df["date"] = pd.to_datetime(df["date"]).dt.date  # Convert to datetime.date
     df = df.sort_values("date")
     return df
 
 df = load_data()
 
-# Slider voor datumselectie
-min_date = df["date"].min()
-max_date = df["date"].max()
+# Slider voor datumrange
+min_date = min(df["date"])
+max_date = max(df["date"])
 
-# Gebruik pandas Timestamps direct voor de slider
 start_date, end_date = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
@@ -35,19 +39,10 @@ start_date, end_date = st.slider(
     format="YYYY-MM-DD"
 )
 
-# Filteren op geselecteerde range
-filtered_df = df[(df["date"] >= pd.Timestamp(start_date)) & (df["date"] <= pd.Timestamp(end_date))]
-st.write(filtered_df)  # Debug: Controleer de gefilterde data
+# Filter de data op geselecteerde range
+filtered_df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
 
-# Plot van slotkoersen
-if not filtered_df.empty:
-    fig = px.line(
-        filtered_df,
-        x="date",
-        y="close",
-        title="S&P 500 Slotkoers",
-        labels={"date": "Datum", "close": "Slotkoers"},
-    )
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.write("Geen data beschikbaar voor de geselecteerde datumrange.")
+# Plot slotkoers
+fig = px.line(filtered_df, x="date", y="close", title="S&P 500 Slotkoers", labels={"date": "Datum", "close": "Slotkoers"})
+fig.update_traces(line=dict(color="royalblue", width=1))
+st.plotly_chart(fig, use_container_width=True)
