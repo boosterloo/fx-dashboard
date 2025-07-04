@@ -16,7 +16,7 @@ supabase: Client = create_client(url, key)
 def load_data():
     response = supabase.table("sp500_data").select("*").execute()
     df = pd.DataFrame(response.data)
-    df["date"] = pd.to_datetime(df["date"], format='%Y-%m-%d')  # Specify date format
+    df["date"] = pd.to_datetime(df["date"], format='%Y-%m-%d')  # Ensure consistent datetime format
     df = df.sort_values("date")
     return df
 
@@ -26,6 +26,7 @@ df = load_data()
 min_date = df["date"].min()
 max_date = df["date"].max()
 
+# Use pandas Timestamps directly for the slider
 start_date, end_date = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
@@ -35,7 +36,7 @@ start_date, end_date = st.slider(
 )
 
 # Filteren op geselecteerde range
-filtered_df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+filtered_df = df[(df["date"] >= pd.Timestamp(start_date)) & (df["date"] <= pd.Timestamp(end_date))]
 st.write(filtered_df)  # Debug: Check filtered data
 
 # Plot van slotkoersen
