@@ -40,7 +40,7 @@ df["date"] = df["date"].dt.date
 # ⌚️ Datumselectie
 min_date = df["date"].min()
 max_date = df["date"].max()
-default_start = max_date - timedelta(days=365)
+default_start = max_date - timedelta(days=90)
 
 st.markdown("### 🗓️ Selecteer datumrange")
 date_range = st.slider("Kies datumrange", min_value=min_date, max_value=max_date,
@@ -48,7 +48,13 @@ date_range = st.slider("Kies datumrange", min_value=min_date, max_value=max_date
 start_date, end_date = date_range
 
 # 🔄 Data filteren
-df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)].copy()
+
+# Indicatorberekening voor strategie-alerts en backtest
+df_filtered["ema_8"] = df_filtered["close"].ewm(span=8, adjust=False).mean()
+df_filtered["ema_21"] = df_filtered["close"].ewm(span=21, adjust=False).mean()
+df_filtered["rsi"] = 100 - (100 / (1 + (df_filtered["close"].diff().clip(lower=0).rolling(14).mean() /
+                                        -df_filtered["close"].diff().clip(upper=0).rolling(14).mean())))
 
 # 📊 YTD en PYTD berekening op basis van volledige data
 try:
@@ -70,96 +76,41 @@ try:
 except:
     st.warning("Niet genoeg data beschikbaar voor YTD/PYTD berekening.")
 
-# ========== 📈 Deel 1: TA Grafieken ==========
-st.subheader("📈 Technische Analyse: Heikin-Ashi, EMA's, MA's & RSI")
+# 🔔 Strategie-alerts
+alerts = []
+if df_filtered["rsi"].iloc[-1] > 70:
+    alerts.append("⚠️ RSI boven 70: mogelijk overbought!")
+elif df_filtered["rsi"].iloc[-1] < 30:
+    alerts.append("⚠️ RSI onder 30: mogelijk oversold!")
 
-# Heikin-Ashi
-df_ha = df_filtered.copy()
-df_ha["ha_close"] = (df_ha["open"] + df_ha["high"] + df_ha["low"] + df_ha["close"]) / 4
-ha_open = [(df_ha["open"].iloc[0] + df_ha["close"].iloc[0]) / 2]
-for i in range(1, len(df_ha)):
-    ha_open.append((ha_open[i - 1] + df_ha["ha_close"].iloc[i - 1]) / 2)
-df_ha["ha_open"] = ha_open
-df_ha["ha_high"] = df_ha[["high", "ha_open", "ha_close"]].max(axis=1)
-df_ha["ha_low"] = df_ha[["low", "ha_open", "ha_close"]].min(axis=1)
+if (df_filtered["ema_8"].iloc[-1] > df_filtered["ema_21"].iloc[-1]) and (df_filtered["ema_8"].iloc[-2] <= df_filtered["ema_21"].iloc[-2]):
+    alerts.append("✅ EMA8 kruist boven EMA21: bullish signaal")
+elif (df_filtered["ema_8"].iloc[-1] < df_filtered["ema_21"].iloc[-1]) and (df_filtered["ema_8"].iloc[-2] >= df_filtered["ema_21"].iloc[-2]):
+    alerts.append("🔻 EMA8 kruist onder EMA21: bearish signaal")
 
-# Indicatoren
-df_ha["ema_8"] = df_ha["close"].ewm(span=8, adjust=False).mean()
-df_ha["ema_21"] = df_ha["close"].ewm(span=21, adjust=False).mean()
-df_ha["ema_55"] = df_ha["close"].ewm(span=55, adjust=False).mean()
-df_ha["ma_50"] = df_ha["close"].rolling(window=50).mean()
-df_ha["ma_200"] = df_ha["close"].rolling(window=200).mean()
-df_ha["bollinger_mid"] = df_ha["close"].rolling(window=20).mean()
-df_ha["bollinger_std"] = df_ha["close"].rolling(window=20).std()
-df_ha["bollinger_upper"] = df_ha["bollinger_mid"] + 2 * df_ha["bollinger_std"]
-df_ha["bollinger_lower"] = df_ha["bollinger_mid"] - 2 * df_ha["bollinger_std"]
-
-# RSI
-delta = df_ha["close"].diff()
-gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-rs = gain / loss
-df_ha["rsi"] = 100 - (100 / (1 + rs))
-
-# Signalen bij MA crossovers
-signals = df_ha[(df_ha["ma_50"].notnull()) & (df_ha["ma_200"].notnull())]
-signals = signals.assign(cross=(signals["ma_50"] > signals["ma_200"]).astype(int))
-signals["signal"] = signals["cross"].diff().fillna(0)
-
-# Subplots maken
-fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                    row_heights=[0.7, 0.3], vertical_spacing=0.05,
-                    subplot_titles=("Heikin-Ashi met Indicatoren", "RSI (14-dagen)"))
-
-fig.add_trace(go.Candlestick(x=df_ha["date"], open=df_ha["ha_open"], high=df_ha["ha_high"],
-    low=df_ha["ha_low"], close=df_ha["ha_close"], name="Heikin-Ashi",
-    increasing_line_color="green", decreasing_line_color="red"), row=1, col=1)
-
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_8"], name="EMA 8"), row=1, col=1)
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_21"], name="EMA 21"), row=1, col=1)
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_55"], name="EMA 55"), row=1, col=1)
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ma_50"], name="MA 50", line=dict(dash="dash")), row=1, col=1)
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ma_200"], name="MA 200", line=dict(dash="dot")), row=1, col=1)
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["bollinger_upper"], name="Bollinger Upper", line=dict(color="gray", width=1, dash="dot")), row=1, col=1)
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["bollinger_lower"], name="Bollinger Lower", line=dict(color="gray", width=1, dash="dot")), row=1, col=1)
-
-# Signal markers
-for _, row in signals.iterrows():
-    if row["signal"] == 1:
-        fig.add_trace(go.Scatter(x=[row["date"]], y=[row["close"]], mode="markers", marker_symbol="triangle-up", marker_color="green", marker_size=10, name="Golden Cross"), row=1, col=1)
-    elif row["signal"] == -1:
-        fig.add_trace(go.Scatter(x=[row["date"]], y=[row["close"]], mode="markers", marker_symbol="triangle-down", marker_color="red", marker_size=10, name="Death Cross"), row=1, col=1)
-
-fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["rsi"], name="RSI", line=dict(color="purple")), row=2, col=1)
-fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
-fig.update_layout(height=900, xaxis_rangeslider_visible=False, legend=dict(
-    orientation="v", yanchor="bottom", y=0, xanchor="right", x=1
-))
-st.plotly_chart(fig, use_container_width=True)
-
-# ========== 📉 Deel 2: Histogrammen ==========
-df_filtered["delta_pct"] = df_filtered["close"].pct_change() * 100
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📉 Histogram van dagelijkse delta (absoluut)")
-    fig_hist = go.Figure(go.Histogram(x=df_filtered["delta"], nbinsx=40, marker_color="orange"))
-    fig_hist.update_layout(xaxis_title="Delta", yaxis_title="Frequentie", bargap=0.1)
-    st.plotly_chart(fig_hist, use_container_width=True)
-
-with col2:
-    st.subheader("📊 Histogram van dagelijkse delta (%)")
-    fig_pct = go.Figure(go.Histogram(x=df_filtered["delta_pct"], nbinsx=40, marker_color="skyblue"))
-    fig_pct.update_layout(xaxis_title="Delta (%)", yaxis_title="Frequentie", bargap=0.1)
-    st.plotly_chart(fig_pct, use_container_width=True)
-
-# ========== 📈 Deel 3: Rolling Volatility ==========
-st.subheader("📈 Rolling Volatility (14d)")
-df_filtered["rolling_volatility"] = df_filtered["delta"].rolling(window=14).std()
-fig_vol = go.Figure(go.Scatter(x=df_filtered["date"], y=df_filtered["rolling_volatility"], mode="lines", name="Volatiliteit"))
-fig_vol.update_layout(xaxis_title="Datum", yaxis_title="Standaarddeviatie")
-st.plotly_chart(fig_vol, use_container_width=True)
+if alerts:
+    st.subheader("📣 Strategie Alerts")
+    for msg in alerts:
+        st.info(msg)
 
 # ✅ Export-optie
 csv = df_filtered.to_csv(index=False).encode("utf-8")
 st.download_button("⬇️ Download gefilterde data (CSV)", csv, "sp500_filtered.csv", "text/csv")
+
+# 📈 Backtest en strategie-analyse
+st.markdown("---")
+st.header("🧪 Backtest & Strategie Analyse")
+
+# Simpele voorbeeldstrategie: koop bij RSI < 30, verkoop bij RSI > 70
+df_bt = df_filtered.copy()
+df_bt["position"] = 0
+df_bt.loc[df_bt["rsi"] < 30, "position"] = 1
+df_bt.loc[df_bt["rsi"] > 70, "position"] = 0
+df_bt["position"] = df_bt["position"].ffill()
+df_bt["strategy_return"] = df_bt["position"] * df_bt["close"].pct_change()
+df_bt["cumulative"] = (1 + df_bt["strategy_return"]).cumprod()
+
+fig_bt = go.Figure()
+fig_bt.add_trace(go.Scatter(x=df_bt["date"], y=df_bt["cumulative"], mode="lines", name="Strategie rendement"))
+fig_bt.update_layout(title="Strategie cumulatief rendement (RSI-based)", xaxis_title="Datum", yaxis_title="Groei", width=1200)
+st.plotly_chart(fig_bt, use_container_width=False)
