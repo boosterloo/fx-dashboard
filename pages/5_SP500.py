@@ -1,3 +1,5 @@
+# ✅ Volledige gegenereerde code voor de gehele pagina
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
