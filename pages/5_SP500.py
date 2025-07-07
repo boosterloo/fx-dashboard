@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from supabase import create_client
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
@@ -30,32 +30,48 @@ while True:
     all_data.extend(data)
     offset += batch_size
 
-# 🥳 DataFrame voorbereiden
+# 🎉 DataFrame voorbereiden
 df = pd.DataFrame(all_data)
 df["date"] = pd.to_datetime(df["date"], errors="coerce")
 df = df.dropna(subset=["date", "open", "high", "low", "close", "delta"])
 df = df.sort_values("date")
 df["date"] = df["date"].dt.date
 
-# 📅 Datumselectie: slider én invoer
+# ⌚️ Datumselectie: slider met standaard laatste 12 maanden
 min_date = df["date"].min()
 max_date = df["date"].max()
-st.markdown("### 📅 Selecteer datumrange")
-col1, col2 = st.columns(2)
-with col1:
-    start_date = st.date_input("Startdatum", min_value=min_date, max_value=max_date, value=min_date)
-with col2:
-    end_date = st.date_input("Einddatum", min_value=min_date, max_value=max_date, value=max_date)
+default_start = max_date - timedelta(days=365)
 
-st.slider("📆 Datumrange (extra zoomoptie)", min_value=min_date, max_value=max_date,
-          value=(start_date, end_date), format="YYYY-MM-DD")
+st.markdown("### 🗓️ Selecteer datumrange")
+date_range = st.slider("Kies datumrange", min_value=min_date, max_value=max_date,
+                       value=(default_start, max_date), format="YYYY-MM-DD")
+start_date, end_date = date_range
 
+# 🔄 Data filteren
 df_filtered = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+
+# 📊 YTD en PYTD berekening
+today = max_date
+ytd_start = datetime(today.year, 1, 1).date()
+pytd_start = datetime(today.year - 1, 1, 1).date()
+ytd_data = df[df["date"] >= ytd_start]
+pytd_data = df[(df["date"] >= pytd_start) & (df["date"] < ytd_start)]
+
+ytd_return_abs = ytd_data["close"].iloc[-1] - ytd_data["close"].iloc[0]
+ytd_return_pct = (ytd_return_abs / ytd_data["close"].iloc[0]) * 100
+pytd_return_abs = pytd_data["close"].iloc[-1] - pytd_data["close"].iloc[0]
+pytd_return_pct = (pytd_return_abs / pytd_data["close"].iloc[0]) * 100
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("YTD #", f"{ytd_return_abs:.2f}")
+col2.metric("YTD %", f"{ytd_return_pct:.2f}%")
+col3.metric("PYTD #", f"{pytd_return_abs:.2f}")
+col4.metric("PYTD %", f"{pytd_return_pct:.2f}%")
 
 # ========== 📈 Deel 1: TA Grafieken ==========
 st.subheader("📈 Technische Analyse: Heikin-Ashi, EMA's & RSI")
 
-# Heikin-Ashi berekening
+# Heikin-Ashi
 df_ha = df_filtered.copy()
 df_ha["ha_close"] = (df_ha["open"] + df_ha["high"] + df_ha["low"] + df_ha["close"]) / 4
 ha_open = [(df_ha["open"].iloc[0] + df_ha["close"].iloc[0]) / 2]
@@ -65,19 +81,17 @@ df_ha["ha_open"] = ha_open
 df_ha["ha_high"] = df_ha[["high", "ha_open", "ha_close"]].max(axis=1)
 df_ha["ha_low"] = df_ha[["low", "ha_open", "ha_close"]].min(axis=1)
 
-# EMA's toevoegen
+# EMA's & RSI
 df_ha["ema_8"] = df_ha["close"].ewm(span=8, adjust=False).mean()
 df_ha["ema_21"] = df_ha["close"].ewm(span=21, adjust=False).mean()
 df_ha["ema_55"] = df_ha["close"].ewm(span=55, adjust=False).mean()
-
-# RSI berekening
 delta = df_ha["close"].diff()
 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
 rs = gain / loss
 df_ha["rsi"] = 100 - (100 / (1 + rs))
 
-# Subplots: Heikin-Ashi en RSI
+# Subplots maken
 fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                     row_heights=[0.7, 0.3], vertical_spacing=0.05,
                     subplot_titles=("Heikin-Ashi met EMA’s", "RSI (14-dagen)"))
@@ -95,29 +109,51 @@ fig.add_trace(go.Candlestick(
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_8"], name="EMA 8", line=dict(width=1.5)), row=1, col=1)
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_21"], name="EMA 21", line=dict(width=1.5)), row=1, col=1)
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_55"], name="EMA 55", line=dict(width=1.5)), row=1, col=1)
-
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["rsi"], name="RSI", line=dict(color="purple", width=2)), row=2, col=1)
+
 fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
-fig.update_layout(height=800, xaxis_rangeslider_visible=False)
+fig.update_layout(height=800, xaxis_rangeslider_visible=False, legend=dict(
+    orientation="v", yanchor="top", y=1, xanchor="right", x=1
+))
 st.plotly_chart(fig, use_container_width=True)
 
-# ========== 📉 Deel 2: Histogram van Delta ==========
+# ========== 📉 Deel 2: Histogrammen ==========
 st.subheader("📉 Histogram van dagelijkse delta’s")
-fig_hist = go.Figure()
-fig_hist.add_trace(go.Histogram(
-    x=df_filtered["delta"],
-    nbinsx=40,
-    marker_color="orange",
-    name="Delta verdeling"
-))
-fig_hist.update_layout(
-    xaxis_title="Delta",
-    yaxis_title="Frequentie",
-    bargap=0.1
-)
-st.plotly_chart(fig_hist, use_container_width=True)
 
-# ========== 📈 Deel 3: Statistieken ==========
+col1, col2 = st.columns(2)
+
+with col1:
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Histogram(
+        x=df_filtered["delta"],
+        nbinsx=40,
+        marker_color="orange",
+        name="Delta absoluut"
+    ))
+    fig_hist.update_layout(
+        xaxis_title="Delta",
+        yaxis_title="Frequentie",
+        bargap=0.1
+    )
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+with col2:
+    df_filtered["delta_pct"] = df_filtered["close"].pct_change() * 100
+    fig_pct = go.Figure()
+    fig_pct.add_trace(go.Histogram(
+        x=df_filtered["delta_pct"],
+        nbinsx=40,
+        marker_color="skyblue",
+        name="Delta %"
+    ))
+    fig_pct.update_layout(
+        xaxis_title="Delta (%)",
+        yaxis_title="Frequentie",
+        bargap=0.1
+    )
+    st.plotly_chart(fig_pct, use_container_width=True)
+
+# ========== 📊 Deel 3: Statistieken ==========
 st.subheader("📊 Statistieken van Delta")
 avg_delta = df_filtered["delta"].mean()
 std_delta = df_filtered["delta"].std()
