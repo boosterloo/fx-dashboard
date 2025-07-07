@@ -81,10 +81,14 @@ df_ha["ha_open"] = ha_open
 df_ha["ha_high"] = df_ha[["high", "ha_open", "ha_close"]].max(axis=1)
 df_ha["ha_low"] = df_ha[["low", "ha_open", "ha_close"]].min(axis=1)
 
-# EMA's & RSI
+# EMA's, MA crossover en RSI
 df_ha["ema_8"] = df_ha["close"].ewm(span=8, adjust=False).mean()
 df_ha["ema_21"] = df_ha["close"].ewm(span=21, adjust=False).mean()
 df_ha["ema_55"] = df_ha["close"].ewm(span=55, adjust=False).mean()
+df_ha["ma_50"] = df_ha["close"].rolling(window=50).mean()
+df_ha["ma_200"] = df_ha["close"].rolling(window=200).mean()
+df_ha["ma_cross"] = df_ha["ma_50"] > df_ha["ma_200"]
+
 delta = df_ha["close"].diff()
 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -94,25 +98,23 @@ df_ha["rsi"] = 100 - (100 / (1 + rs))
 # Subplots maken
 fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                     row_heights=[0.7, 0.3], vertical_spacing=0.05,
-                    subplot_titles=("Heikin-Ashi met EMA’s", "RSI (14-dagen)"))
+                    subplot_titles=("Heikin-Ashi met EMA’s, MA’s", "RSI (14-dagen)"))
 
 fig.add_trace(go.Candlestick(
-    x=df_ha["date"],
-    open=df_ha["ha_open"],
-    high=df_ha["ha_high"],
-    low=df_ha["ha_low"],
-    close=df_ha["ha_close"],
-    name="Heikin-Ashi",
-    increasing_line_color="green",
-    decreasing_line_color="red"
+    x=df_ha["date"], open=df_ha["ha_open"], high=df_ha["ha_high"],
+    low=df_ha["ha_low"], close=df_ha["ha_close"], name="Heikin-Ashi",
+    increasing_line_color="green", decreasing_line_color="red"
 ), row=1, col=1)
+
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_8"], name="EMA 8", line=dict(width=1.5)), row=1, col=1)
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_21"], name="EMA 21", line=dict(width=1.5)), row=1, col=1)
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ema_55"], name="EMA 55", line=dict(width=1.5)), row=1, col=1)
+fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ma_50"], name="MA 50", line=dict(dash="dash", color="blue")), row=1, col=1)
+fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["ma_200"], name="MA 200", line=dict(dash="dot", color="black")), row=1, col=1)
 fig.add_trace(go.Scatter(x=df_ha["date"], y=df_ha["rsi"], name="RSI", line=dict(color="purple", width=2)), row=2, col=1)
 
 fig.update_yaxes(title_text="RSI", row=2, col=1, range=[0, 100])
-fig.update_layout(height=800, xaxis_rangeslider_visible=False, legend=dict(
+fig.update_layout(height=850, xaxis_rangeslider_visible=False, legend=dict(
     orientation="v", yanchor="top", y=1, xanchor="right", x=1
 ))
 st.plotly_chart(fig, use_container_width=True)
