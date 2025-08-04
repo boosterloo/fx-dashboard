@@ -1,51 +1,44 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from utils import get_supabase_data
 
 st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
 st.title("📈 S&P 500 Dashboard")
 
-# 🔄 Data ophalen uit Supabase-view
+# 🔄 Data ophalen
 with st.spinner("Ophalen van S&P 500 data..."):
     df = get_supabase_data("sp500_view")
 
-# ✅ Optioneel: delta-kolom toevoegen (prijsverandering)
-# df['delta'] = df['close'].diff()
+# 🧼 Opschonen en sorteren
+df = df.dropna(subset=['date', 'close'])
+df['date'] = pd.to_datetime(df['date'])
+df = df.sort_values('date')
 
-# ✅ Controleer op lege data en vereiste kolommen
-df = df.dropna(subset=['date', 'open', 'high', 'low', 'close', 'volume'])
+# 📊 Berekeningen
+df['delta'] = df['close'].diff()
+df['delta_pct'] = df['close'].pct_change() * 100
 
-if df.empty:
-    st.error("Geen data opgehaald van Supabase. Controleer of de view goed is ingesteld en gevuld.")
-    st.text("Kolommen beschikbaar:")
-    st.write(df.columns.tolist())
-    st.stop()
+# 🟢 Kies MA-periode
+ma_period = st.selectbox("Selecteer MA-periode", [5, 10, 20, 50, 100, 200], index=2)
+df['ma'] = df['close'].rolling(window=ma_period).mean()
 
-# 📅 Datumfilter toevoegen
-unique_dates = sorted(df['date'].unique(), reverse=True)
-default_start = unique_dates[min(30, len(unique_dates)-1)] if unique_dates else None
-selected_dates = st.multiselect("Selecteer data", unique_dates, default=[default_start] if default_start else [])
+# 📅 Datum range slider
+min_date = df['date'].min()
+max_date = df['date'].max()
+date_range = st.slider("Selecteer datumrange", min_value=min_date, max_value=max_date, value=(max_date - pd.Timedelta(days=60), max_date))
+df_filtered = df[(df['date'] >= date_range[0]) & (df['date'] <= date_range[1])]
 
-if selected_dates:
-    df = df[df['date'].isin(selected_dates)]
+# 📈 Close + MA grafiek
+fig_close = go.Figure()
+fig_close.add_trace(go.Scatter(x=df_filtered['date'], y=df_filtered['close'], mode='lines', name='Close'))
+fig_close.add_trace(go.Scatter(x=df_filtered['date'], y=df_filtered['ma'], mode='lines', name=f'MA {ma_period}'))
+fig_close.update_layout(title="S&P 500 Close + MA", xaxis_title="Datum", yaxis_title="Prijs")
+st.plotly_chart(fig_close, use_container_width=True)
 
-# 📊 Plotly-grafiek maken met OHLC data
-ohlc_fig = make_subplots(rows=1, cols=1, shared_xaxes=True, vertical_spacing=0.01)
-ohlc_fig.add_trace(go.Candlestick(
-    x=df['date'],
-    open=df['open'],
-    high=df['high'],
-    low=df['low'],
-    close=df['close'],
-    name="S&P 500"
-))
-ohlc_fig.update_layout(title="S&P 500 OHLC", xaxis_title="Datum", yaxis_title="Prijs", xaxis_rangeslider_visible=False)
-st.plotly_chart(ohlc_fig, use_container_width=True)
-
-# 📉 Volume grafiek
-volume_fig = go.Figure()
-volume_fig.add_trace(go.Bar(x=df['date'], y=df['volume'], name="Volume"))
-volume_fig.update_layout(title="S&P 500 Volume", xaxis_title="Datum", yaxis_title="Volume")
-st.plotly_chart(volume_fig, use_container_width=True)
+# 📊 Histogram: Absolute delta en delta %
+fig_delta = go.Figure()
+fig_delta.add_trace(go.Bar(x=df_filtered['date'], y=df_filtered['delta'].abs(), name='Δ Absoluut'))
+fig_delta.add_trace(go.Bar(x=df_filtered['date'], y=df_filtered['delta_pct'].abs(), name='Δ %'))
+fig_delta.update_layout(title="Dagelijkse Verandering (Absoluut en %)", xaxis_title="Datum", yaxis_title="Verandering", barmode='group')
+st.plotly_chart(fig_delta, use_container_width=True)
