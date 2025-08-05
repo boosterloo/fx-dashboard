@@ -24,10 +24,10 @@ df['delta_pct'] = df['close'].pct_change() * 100
 ma_period = st.selectbox("Selecteer MA-periode", [5, 10, 20, 50, 100, 200], index=2)
 df['ma'] = df['close'].rolling(window=ma_period).mean()
 
-# 📅 Datum slider
+# 📅 Datum slider (laatste 4 maanden standaard)
 min_date = df['date'].min().date()
 max_date = df['date'].max().date()
-start_date = max_date - timedelta(days=60)
+start_date = max_date - timedelta(days=120)
 date_range = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
