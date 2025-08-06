@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from utils import get_supabase_data
+import plotly.express as px
+from utils import get_supabase_data_in_chunks
 
 st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
 st.title("📈 S&P 500 Dashboard")
 
-# 📅 Data ophalen uit Supabase view inclusief delta's
-df = get_supabase_data("sp500_view_delta")
+# 📅 Data ophalen in chunks uit Supabase view inclusief delta's
+df = get_supabase_data_in_chunks("sp500_view_delta")
 
 if df.empty:
     st.warning("Geen data opgehaald van Supabase.")
@@ -25,7 +26,7 @@ df.dropna(subset=["close", "delta_abs", "delta_pct"], inplace=True)
 min_date = df["date"].min().date()
 max_date = df["date"].max().date()
 
-# Slider om datumrange te selecteren
+# Slider om datumrange te selecteren (standaard volledige range)
 date_range = st.slider(
     "Selecteer datumrange",
     min_value=min_date,
@@ -59,27 +60,24 @@ else:
     kleuren = ["green" if x >= 0 else "red" for x in df_filtered["delta_pct"]]
     fig2.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["delta_pct"], name="Δ %", marker_color=kleuren))
     fig2.update_layout(title="Dagelijkse Verandering (%)", yaxis_title="Verandering (%)")
-
 fig2.update_layout(xaxis_title="Datum", barmode="group")
 
 # 📉 Histogrammen met mediaan
 st.subheader("📊 Histogrammen van Dagelijkse Veranderingen")
-hist_fig_abs = go.Figure()
-hist_data_abs = df_filtered["delta_abs"]
-mediaan_abs = hist_data_abs.median()
-hist_fig_abs.add_trace(go.Histogram(x=hist_data_abs, nbinsx=30, marker_color="green", name="Verdeling Δ absoluut"))
-hist_fig_abs.add_vline(x=mediaan_abs, line_dash="dash", line_color="red", annotation_text=f"Mediaan: {mediaan_abs:.2f}", annotation_position="top right")
-hist_fig_abs.update_layout(title="Histogram Δ absoluut", xaxis_title="Verandering (punten)", yaxis_title="Frequentie")
+col1, col2 = st.columns([1, 1])
 
-hist_fig_pct = go.Figure()
-hist_data_pct = df_filtered["delta_pct"]
-mediaan_pct = hist_data_pct.median()
-hist_fig_pct.add_trace(go.Histogram(x=hist_data_pct, nbinsx=30, marker_color="blue", name="Verdeling Δ %"))
-hist_fig_pct.add_vline(x=mediaan_pct, line_dash="dash", line_color="red", annotation_text=f"Mediaan: {mediaan_pct:.2f}%", annotation_position="top right")
-hist_fig_pct.update_layout(title="Histogram Δ %", xaxis_title="Verandering (%)", yaxis_title="Frequentie")
+with col1:
+    hist_fig_abs = px.histogram(df_filtered, x="delta_abs", nbins=30, title="Histogram Δ absoluut", color_discrete_sequence=["green"])
+    mediaan_abs = df_filtered["delta_abs"].median()
+    hist_fig_abs.add_vline(x=mediaan_abs, line_dash="dash", line_color="red", annotation_text=f"Mediaan: {mediaan_abs:.2f}", annotation_position="top right")
+    st.plotly_chart(hist_fig_abs, use_container_width=True)
+
+with col2:
+    hist_fig_pct = px.histogram(df_filtered, x="delta_pct", nbins=30, title="Histogram Δ %", color_discrete_sequence=["blue"])
+    mediaan_pct = df_filtered["delta_pct"].median()
+    hist_fig_pct.add_vline(x=mediaan_pct, line_dash="dash", line_color="red", annotation_text=f"Mediaan: {mediaan_pct:.2f}%", annotation_position="top right")
+    st.plotly_chart(hist_fig_pct, use_container_width=True)
 
 # 📈 Visualisaties tonen
 st.plotly_chart(fig1, use_container_width=True)
 st.plotly_chart(fig2, use_container_width=True)
-st.plotly_chart(hist_fig_abs, use_container_width=True)
-st.plotly_chart(hist_fig_pct, use_container_width=True)
