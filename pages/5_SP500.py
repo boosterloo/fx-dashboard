@@ -1,58 +1,57 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import timedelta
 from utils import get_supabase_data
 
 st.set_page_config(page_title="S&P 500 Dashboard", layout="wide")
 st.title("📈 S&P 500 Dashboard")
 
-# 🔄 Data ophalen
-with st.spinner("Ophalen van S&P 500 data..."):
-    df = get_supabase_data("sp500_view")
+# 📅 Data ophalen
+df = get_supabase_data("sp500_data")
 
-# 📅 Date opschonen en sorteren
-df = df.dropna(subset=['date', 'close'])
-df['date'] = pd.to_datetime(df['date'])
-df = df.sort_values('date')
+if df.empty:
+    st.warning("Geen data opgehaald van Supabase.")
+    st.stop()
 
-# 📊 Berekeningen
-df['delta'] = df['close'].diff()
-df['delta_pct'] = df['close'].pct_change() * 100
+# 🧹 Datacleaning
+df["date"] = pd.to_datetime(df["date"])
+df.sort_values("date", inplace=True)
+df["close"] = pd.to_numeric(df["close"], errors="coerce")
+df.dropna(subset=["close"], inplace=True)
 
-# 🟢 Kies MA-periode
-ma_period = st.selectbox("Selecteer MA-periode", [5, 10, 20, 50, 100, 200], index=2)
-df['ma'] = df['close'].rolling(window=ma_period).mean()
+# 🗓️ Datumfilter
+min_date = df["date"].min()
+max_date = df["date"].max()
+date_range = st.slider("Selecteer datumrange", min_value=min_date, max_value=max_date, value=(max_date - pd.Timedelta(days=90), max_date))
 
-# 📅 Datum slider (laatste 4 maanden standaard)
-min_date = df['date'].min().date()
-max_date = df['date'].max().date()
-start_date = max_date - timedelta(days=120)
-date_range = st.slider(
-    "Selecteer datumrange",
-    min_value=min_date,
-    max_value=max_date,
-    value=(start_date, max_date)
-)
+df_filtered = df[(df["date"] >= date_range[0]) & (df["date"] <= date_range[1])].copy()
 
-# 🔍 Filter data op geselecteerde range
-df_filtered = df[(df['date'] >= pd.to_datetime(date_range[0])) & (df['date'] <= pd.to_datetime(date_range[1]))]
+# 📏 MA-instelling
+ma_period = st.number_input("Selecteer MA-periode", min_value=1, max_value=200, value=20)
+df_filtered["MA"] = df_filtered["close"].rolling(ma_period).mean()
 
-# 📈 Grafiek: Close + MA
-fig_close = go.Figure()
-fig_close.add_trace(go.Scatter(x=df_filtered['date'], y=df_filtered['close'], mode='lines', name='Close'))
-fig_close.add_trace(go.Scatter(x=df_filtered['date'], y=df_filtered['ma'], mode='lines', name=f'MA {ma_period}'))
-fig_close.update_layout(title="S&P 500 Close + MA", xaxis_title="Datum", yaxis_title="Prijs")
-st.plotly_chart(fig_close, use_container_width=True)
+# 📉 Dagelijkse veranderingen
+df_filtered["delta_abs"] = df_filtered["close"].diff()
+df_filtered["delta_pct"] = df_filtered["close"].pct_change() * 100
 
-# 📊 Histogram: Δ en Δ %
-fig_delta = go.Figure()
-fig_delta.add_trace(go.Bar(x=df_filtered['date'], y=df_filtered['delta'].abs(), name='Δ Absoluut'))
-fig_delta.add_trace(go.Bar(x=df_filtered['date'], y=df_filtered['delta_pct'].abs(), name='Δ %'))
-fig_delta.update_layout(
+# 📊 Close + MA grafiek
+fig1 = go.Figure()
+fig1.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["close"], mode="lines", name="Close"))
+fig1.add_trace(go.Scatter(x=df_filtered["date"], y=df_filtered["MA"], mode="lines", name=f"MA {ma_period}"))
+fig1.update_layout(title="S&P 500 Close + MA", xaxis_title="Datum", yaxis_title="Prijs")
+
+# 📊 Histogram verandering
+fig2 = go.Figure()
+fig2.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["delta_abs"], name="Δ absoluut"))
+fig2.add_trace(go.Bar(x=df_filtered["date"], y=df_filtered["delta_pct"], name="Δ %"))
+
+fig2.update_layout(
     title="Dagelijkse Verandering (Absoluut en %)",
+    barmode="group",
     xaxis_title="Datum",
     yaxis_title="Verandering",
-    barmode='group'
 )
-st.plotly_chart(fig_delta, use_container_width=True)
+
+# 📈 Visualisaties tonen
+st.plotly_chart(fig1, use_container_width=True)
+st.plotly_chart(fig2, use_container_width=True)
