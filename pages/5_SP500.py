@@ -19,12 +19,21 @@ df.sort_values("date", inplace=True)
 df["close"] = pd.to_numeric(df["close"], errors="coerce")
 df.dropna(subset=["close"], inplace=True)
 
-# 🗓️ Datumfilter
-min_date = df["date"].min()
-max_date = df["date"].max()
-date_range = st.slider("Selecteer datumrange", min_value=min_date, max_value=max_date, value=(max_date - pd.Timedelta(days=90), max_date))
+# 🗓️ Datumfilter (compatibel met Streamlit slider)
+df["date_only"] = df["date"].dt.date
+min_date = df["date_only"].min()
+max_date = df["date_only"].max()
+default_start = max_date - pd.Timedelta(days=90).to_pytimedelta()
 
-df_filtered = df[(df["date"] >= date_range[0]) & (df["date"] <= date_range[1])].copy()
+date_range = st.slider(
+    "Selecteer datumrange",
+    min_value=min_date,
+    max_value=max_date,
+    value=(default_start, max_date)
+)
+
+# Filter op datum
+df_filtered = df[(df["date_only"] >= date_range[0]) & (df["date_only"] <= date_range[1])].copy()
 
 # 📏 MA-instelling
 ma_period = st.number_input("Selecteer MA-periode", min_value=1, max_value=200, value=20)
